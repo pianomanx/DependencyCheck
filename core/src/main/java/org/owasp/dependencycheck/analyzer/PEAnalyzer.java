@@ -185,6 +185,7 @@ public class PEAnalyzer extends AbstractFileTypeAnalyzer {
                             break;
                         case "InternalName":
                             dependency.addEvidence(EvidenceType.PRODUCT, "PE Header", "InternalName", value, Confidence.MEDIUM);
+                            dependency.addEvidence(EvidenceType.VENDOR, "PE Header", "InternalName", value, Confidence.LOW);
                             determineDependencyName(dependency, value);
                             break;
                         case "LegalCopyright":
@@ -201,13 +202,14 @@ public class PEAnalyzer extends AbstractFileTypeAnalyzer {
                             break;
                         case "ProductName":
                             dependency.addEvidence(EvidenceType.PRODUCT, "PE Header", "ProductName", value, Confidence.HIGHEST);
+                            dependency.addEvidence(EvidenceType.VENDOR, "PE Header", "ProductName", value, Confidence.MEDIUM);
                             determineDependencyName(dependency, value);
                             break;
                         default:
                             LOGGER.debug("PE Analyzer found `" + key + "` with a value:" + value);
                     }
                     if (fVersion != null && pVersion != null) {
-                        final int max = fVersion.length() > pVersion.length() ? pVersion.length() : fVersion.length();
+                        final int max = Math.min(fVersion.length(), pVersion.length());
                         int pos;
                         for (pos = 0; pos < max; pos++) {
                             if (fVersion.charAt(pos) != pVersion.charAt(pos)) {

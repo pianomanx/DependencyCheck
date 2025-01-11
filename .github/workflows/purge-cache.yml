@@ -2,15 +2,18 @@ name: Purge Cache
 
 on: workflow_dispatch
 
+permissions:
+  contents: read # to fetch code (actions/checkout)
+
 jobs:
   build:
     name: Purge GitHub Cache
     runs-on: ubuntu-latest 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Check Maven Cache
         id: maven-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -18,13 +21,13 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Check Local Maven Cache
         id: maven-it-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: maven/target/local-repo
           key: mvn-it-repo
       - name: Check ODC Data Cache
         id: odc-data-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: core/target/data
           key: odc-data

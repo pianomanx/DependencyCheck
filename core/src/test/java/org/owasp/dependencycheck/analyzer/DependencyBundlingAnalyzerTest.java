@@ -19,9 +19,11 @@ package org.owasp.dependencycheck.analyzer;
 
 import com.github.packageurl.MalformedPackageURLException;
 import java.io.File;
-import mockit.Mocked;
-import mockit.Verifications;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Answers;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.owasp.dependencycheck.BaseTest;
 import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.dependency.Dependency;
@@ -29,15 +31,19 @@ import org.owasp.dependencycheck.dependency.Dependency;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
 import org.owasp.dependencycheck.dependency.Confidence;
 import org.owasp.dependencycheck.dependency.naming.PurlIdentifier;
 
 /**
  * @author Jeremy Long
  */
+@RunWith(MockitoJUnitRunner.class)
 public class DependencyBundlingAnalyzerTest extends BaseTest {
 
-    @Mocked
+    @Mock(answer = Answers.RETURNS_SMART_NULLS)
     private Engine engineMock;
 
     /**
@@ -80,13 +86,7 @@ public class DependencyBundlingAnalyzerTest extends BaseTest {
         instance.analyze(null, engineMock);
         instance.analyze(null, engineMock);
         assertTrue(instance.getAnalyzed());
-
-        new Verifications() {
-            {
-                engineMock.getDependencies();
-                times = 1;
-            }
-        };
+        verify(engineMock, times(1)).getDependencies();
     }
 
     /**
@@ -121,36 +121,34 @@ public class DependencyBundlingAnalyzerTest extends BaseTest {
 
     @Test
     public void testFirstPathIsShortest() {
-        DependencyBundlingAnalyzer instance = new DependencyBundlingAnalyzer();
-
         String left = "./a/c.jar";
         String right = "./d/e/f.jar";
         boolean expResult = true;
-        boolean result = instance.firstPathIsShortest(left, right);
+        boolean result = DependencyBundlingAnalyzer.firstPathIsShortest(left, right);
         assertEquals(expResult, result);
 
         left = "./a/b/c.jar";
         right = "./d/e/f.jar";
         expResult = true;
-        result = instance.firstPathIsShortest(left, right);
+        result = DependencyBundlingAnalyzer.firstPathIsShortest(left, right);
         assertEquals(expResult, result);
 
         left = "./d/b/c.jar";
         right = "./a/e/f.jar";
         expResult = false;
-        result = instance.firstPathIsShortest(left, right);
+        result = DependencyBundlingAnalyzer.firstPathIsShortest(left, right);
         assertEquals(expResult, result);
 
         left = "./a/b/c.jar";
         right = "./d/f.jar";
         expResult = false;
-        result = instance.firstPathIsShortest(left, right);
+        result = DependencyBundlingAnalyzer.firstPathIsShortest(left, right);
         assertEquals(expResult, result);
 
         left = "./a/b/c.jar";
         right = "./a/b/c.jar";
         expResult = true;
-        result = instance.firstPathIsShortest(left, right);
+        result = DependencyBundlingAnalyzer.firstPathIsShortest(left, right);
         assertEquals(expResult, result);
     }
 

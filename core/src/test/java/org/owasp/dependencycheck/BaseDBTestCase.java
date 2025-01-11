@@ -24,7 +24,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
-import org.apache.commons.compress.utils.IOUtils;
+import org.apache.commons.io.IOUtils;
 import org.junit.Before;
 import org.owasp.dependencycheck.data.nvdcve.DatabaseManager;
 import org.owasp.dependencycheck.utils.WriteLock;
@@ -63,9 +63,9 @@ public abstract class BaseDBTestCase extends BaseTest {
             String fileName = getSettings().getString(Settings.KEYS.DB_FILE_NAME);
             LOGGER.trace("DB file name {}", fileName);
             File dataFile = new File(dataPath, fileName);
-            LOGGER.trace("Ensuring {} exists", dataFile.toString());
+            LOGGER.trace("Ensuring {} exists", dataFile);
             if (!dataPath.exists() || !dataFile.exists()) {
-                LOGGER.trace("Extracting database to {}", dataPath.toString());
+                LOGGER.trace("Extracting database to {}", dataPath);
                 dataPath.mkdirs();
                 File path = new File(BaseDBTestCase.class.getClassLoader().getResource("data.zip").toURI().getPath());
                 try (FileInputStream fis = new FileInputStream(path);

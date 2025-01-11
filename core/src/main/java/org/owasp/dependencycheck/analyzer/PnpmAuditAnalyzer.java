@@ -17,7 +17,8 @@
  */
 package org.owasp.dependencycheck.analyzer;
 
-import org.apache.commons.io.FileUtils;
+import org.apache.commons.collections4.MultiValuedMap;
+import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.json.JSONException;
@@ -42,10 +43,9 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.commons.collections4.MultiValuedMap;
-import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
 
 @ThreadSafe
 public class PnpmAuditAnalyzer extends AbstractNpmAnalyzer {
@@ -148,8 +148,6 @@ public class PnpmAuditAnalyzer extends AbstractNpmAnalyzer {
                         LOGGER.debug("{} is enabled.", getName());
                         break;
                     case executableNotFoundExitValue:
-                        this.setEnabled(false);
-                        LOGGER.warn("The {} has been disabled. Pnpm executable was not found.", getName());
                     default:
                         this.setEnabled(false);
                         LOGGER.warn("The {} has been disabled. Pnpm executable was not found.", getName());
@@ -157,7 +155,6 @@ public class PnpmAuditAnalyzer extends AbstractNpmAnalyzer {
             }
         } catch (Exception ex) {
             this.setEnabled(false);
-            LOGGER.debug("The {} has been disabled. Pnpm executable was not found.", ex);
             LOGGER.warn("The {} has been disabled. Pnpm executable was not found.", getName());
             throw new InitializationException("Unable to read pnpm audit output.", ex);
         }
@@ -222,7 +219,7 @@ public class PnpmAuditAnalyzer extends AbstractNpmAnalyzer {
                 if (!StringUtils.isBlank(errOutput)) {
                     LOGGER.error("Process error output: {}", errOutput);
                 }
-                String verboseJson = FileUtils.readFileToString(tmpFile, StandardCharsets.UTF_8);
+                String verboseJson = new String(Files.readAllBytes(tmpFile.toPath()), StandardCharsets.UTF_8);
                 // Workaround implicit creation of .pnpm-debug.log, see https://github.com/pnpm/pnpm/issues/3832
                 // affects usage of docker container to analyze mounted directories without privileges
                 if (verboseJson.contains("EACCES: permission denied, open 'node_modules/.pnpm-debug.log'")) {
@@ -238,7 +235,7 @@ public class PnpmAuditAnalyzer extends AbstractNpmAnalyzer {
                 throw new AnalysisException("Pnpm audit returned an invalid response.", e);
             } finally {
                 if (!tmpFile.delete()) {
-                    LOGGER.debug("Unable to delete temp file: {}", tmpFile.toString());
+                    LOGGER.debug("Unable to delete temp file: {}", tmpFile);
                 }
             }
         } catch (IOException ioe) {
@@ -262,7 +259,7 @@ public class PnpmAuditAnalyzer extends AbstractNpmAnalyzer {
             Dependency dependency)
             throws AnalysisException {
         try {
-            final Boolean skipDevDependencies = getSettings().getBoolean(Settings.KEYS.ANALYZER_NODE_AUDIT_SKIPDEV, false);
+            final boolean skipDevDependencies = getSettings().getBoolean(Settings.KEYS.ANALYZER_NODE_AUDIT_SKIPDEV, false);
 
             // Use pnpm directly to fetch audit.json
             // Retrieves the contents of package-lock.json from the Dependency
