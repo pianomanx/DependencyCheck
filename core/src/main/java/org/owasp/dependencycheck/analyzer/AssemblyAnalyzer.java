@@ -232,8 +232,7 @@ public class AssemblyAnalyzer extends AbstractFileTypeAnalyzer {
         }
 
         if (data.getFileVersion() != null && data.getProductVersion() != null) {
-            final int max = data.getFileVersion().length() > data.getProductVersion().length()
-                    ? data.getProductVersion().length() : data.getFileVersion().length();
+            final int max = Math.min(data.getFileVersion().length(), data.getProductVersion().length());
             int pos;
             for (pos = 0; pos < max; pos++) {
                 if (data.getFileVersion().charAt(pos) != data.getProductVersion().charAt(pos)) {
@@ -285,20 +284,24 @@ public class AssemblyAnalyzer extends AbstractFileTypeAnalyzer {
 
         if (!StringUtils.isBlank(data.getCompanyName())) {
             dependency.addEvidence(EvidenceType.VENDOR, "grokassembly", "CompanyName", data.getCompanyName(), Confidence.HIGHEST);
+            dependency.addEvidence(EvidenceType.PRODUCT, "grokassembly", "CompanyName", data.getCompanyName(), Confidence.LOW);
             addMatchingValues(data.getNamespaces(), data.getCompanyName(), dependency, EvidenceType.VENDOR);
         }
         if (!StringUtils.isBlank(data.getProductName())) {
             dependency.addEvidence(EvidenceType.PRODUCT, "grokassembly", "ProductName", data.getProductName(), Confidence.HIGHEST);
+            dependency.addEvidence(EvidenceType.VENDOR, "grokassembly", "ProductName", data.getProductName(), Confidence.MEDIUM);
             addMatchingValues(data.getNamespaces(), data.getProductName(), dependency, EvidenceType.PRODUCT);
         }
         if (!StringUtils.isBlank(data.getFileDescription())) {
             dependency.addEvidence(EvidenceType.PRODUCT, "grokassembly", "FileDescription", data.getFileDescription(), Confidence.HIGH);
+            dependency.addEvidence(EvidenceType.VENDOR, "grokassembly", "FileDescription", data.getFileDescription(), Confidence.LOW);
             addMatchingValues(data.getNamespaces(), data.getFileDescription(), dependency, EvidenceType.PRODUCT);
         }
 
         final String internalName = data.getInternalName();
         if (!StringUtils.isBlank(internalName)) {
             dependency.addEvidence(EvidenceType.PRODUCT, "grokassembly", "InternalName", internalName, Confidence.MEDIUM);
+            dependency.addEvidence(EvidenceType.VENDOR, "grokassembly", "InternalName", internalName, Confidence.LOW);
             addMatchingValues(data.getNamespaces(), internalName, dependency, EvidenceType.PRODUCT);
             addMatchingValues(data.getNamespaces(), internalName, dependency, EvidenceType.VENDOR);
             if (dependency.getName() == null && StringUtils.containsIgnoreCase(dependency.getActualFile().getName(), internalName)) {
@@ -314,6 +317,7 @@ public class AssemblyAnalyzer extends AbstractFileTypeAnalyzer {
         final String originalFilename = data.getOriginalFilename();
         if (!StringUtils.isBlank(originalFilename)) {
             dependency.addEvidence(EvidenceType.PRODUCT, "grokassembly", "OriginalFilename", originalFilename, Confidence.MEDIUM);
+            dependency.addEvidence(EvidenceType.VENDOR, "grokassembly", "OriginalFilename", originalFilename, Confidence.LOW);
             addMatchingValues(data.getNamespaces(), originalFilename, dependency, EvidenceType.PRODUCT);
             if (dependency.getName() == null && StringUtils.containsIgnoreCase(dependency.getActualFile().getName(), originalFilename)) {
                 final String ext = FileUtils.getFileExtension(originalFilename);
@@ -356,6 +360,7 @@ public class AssemblyAnalyzer extends AbstractFileTypeAnalyzer {
                     + "'exe' or 'dll' was scanned. The 'dotnet' executable could not be found on "
                     + "the path; either disable the Assembly Analyzer or add the path to dotnet "
                     + "core in the configuration.");
+            LOGGER.error("The dotnet 8.0 core runtime or SDK is required to analyze assemblies");
             LOGGER.error("----------------------------------------------------");
             return;
         }
@@ -366,28 +371,29 @@ public class AssemblyAnalyzer extends AbstractFileTypeAnalyzer {
                 processReader.readAll();
                 final String error = processReader.getError();
                 if (p.exitValue() != 1 || !StringUtils.isBlank(error)) {
-                    LOGGER.warn("An error occurred with the .NET AssemblyAnalyzer, please see the log for more details.");
+                    LOGGER.warn("An error occurred with the .NET AssemblyAnalyzer, please see the log for more details.\n"
+                    + "dependency-check requires dotnet 8.0 core runtime or sdk to be installed to analyze assemblies.");
                     LOGGER.debug("GrokAssembly.dll is not working properly");
                     grokAssembly = null;
                     setEnabled(false);
-                    throw new InitializationException("Could not execute .NET AssemblyAnalyzer");
+                    throw new InitializationException("Could not execute .NET AssemblyAnalyzer, is the dotnet 8.0 runtime or sdk installed?");
                 }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             LOGGER.warn("An error occurred with the .NET AssemblyAnalyzer;\n"
-                    + "dependency-check requires dotnet 6.0 core to be installed to analyze assemblies;\n"
+                    + "dependency-check requires dotnet 8.0 core runtime or sdk to be installed to analyze assemblies;\n"
                     + "this can be ignored unless you are scanning .NET DLLs. Please see the log for more details.");
             LOGGER.debug("Could not execute GrokAssembly {}", e.getMessage());
             setEnabled(false);
             throw new InitializationException("An error occurred with the .NET AssemblyAnalyzer", e);
         } catch (IOException e) {
             LOGGER.warn("An error occurred with the .NET AssemblyAnalyzer;\n"
-                    + "dependency-check requires dotnet 6.0 core to be installed to analyze assemblies;\n"
+                    + "dependency-check requires dotnet 8.0 core to be installed to analyze assemblies;\n"
                     + "this can be ignored unless you are scanning .NET DLLs. Please see the log for more details.");
             LOGGER.debug("Could not execute GrokAssembly {}", e.getMessage());
             setEnabled(false);
-            throw new InitializationException("An error occurred with the .NET AssemblyAnalyzer", e);
+            throw new InitializationException("An error occurred with the .NET AssemblyAnalyzer, is the dotnet 8.0 runtime or sdk installed?", e);
         }
     }
 
@@ -469,7 +475,7 @@ public class AssemblyAnalyzer extends AbstractFileTypeAnalyzer {
     private boolean isDotnetPath() {
         final String[] args = new String[2];
         args[0] = "dotnet";
-        args[1] = "--version";
+        args[1] = "--info";
         final ProcessBuilder pb = new ProcessBuilder(args);
         try {
             final Process proc = pb.start();

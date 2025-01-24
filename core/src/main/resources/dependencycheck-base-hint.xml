@@ -148,48 +148,6 @@
         </add>
     </hint>
     
-    <!-- begin hack for temporary patch of issue #534-->
-    <hint>
-        <given>
-            <fileName regex="true" contains=".*hibernate-validator-5\.0\..*"/>
-        </given>
-        <add>
-            <evidence type="version" source="hint" name="version" value="5.0" confidence="HIGHEST"/>
-        </add>
-    </hint>
-    <hint>
-        <given>
-            <fileName regex="true" contains=".*hibernate-validator-5\.1\.[01].*"/>
-        </given>
-        <add>
-            <evidence type="version" source="hint" name="version" value="5.1" confidence="HIGHEST"/>
-        </add>
-    </hint>
-    <hint>
-        <given>
-            <fileName regex="true" contains=".*hibernate-validator-4\.1\..*"/>
-        </given>
-        <add>
-            <evidence type="version" source="hint" name="version" value="4.1.0" confidence="HIGHEST"/>
-        </add>
-    </hint>
-    <hint>
-        <given>
-            <fileName regex="true" contains=".*hibernate-validator-4\.2\.0.*"/>
-        </given>
-        <add>
-            <evidence type="version" source="hint" name="version" value="4.2.0" confidence="HIGHEST"/>
-        </add>
-    </hint>
-    <hint>
-        <given>
-            <fileName regex="true" contains=".*hibernate-validator-4\.3\.[01]\..*"/>
-        </given>
-        <add>
-            <evidence type="version" source="hint" name="version" value="4.3.0" confidence="HIGHEST"/>
-        </add>
-    </hint>
-    <!-- end hack for temporary patch of issue #534-->
     <!-- creating a spring boot starter project can cause your app to incorrectly be flagged as spring-->
     <hint>
         <given>
@@ -428,7 +386,7 @@
             <evidence type="vendor" source="hint analyzer" name="vendor" value="vt" confidence="HIGHEST"/>
         </add>
     </hint>
-        <hint>
+    <hint>
         <given>
             <evidence type="vendor" source="pom" name="url" value="https://www.bouncycastle.org/fips-java"/>
         </given>
@@ -455,6 +413,47 @@
         </given>
         <add>
             <evidence type="product" source="hint analyzer" name="product" value="xerces-j" confidence="HIGHEST"/>
+        </add>
+    </hint>
+    <hint>
+        <!-- false negative per issue #4930 -->
+        <given>
+            <evidence type="product" source="pom" name="parent-artifactid" value="parquet"/>
+        </given>
+        <add>
+            <evidence type="product" source="hint analyzer" name="product" value="parquet-mr" confidence="HIGH"/>
+        </add>
+    </hint>
+    <hint>
+        <!-- false negative per issue #1387 -->
+        <given>
+            <evidence type="product" source="composer.lock" name="product" value="yii2"/>
+        </given>
+        <add>
+            <evidence type="vendor" source="hint analyzer" name="vendor" value="yiiframework" confidence="HIGH"/>
+            <evidence type="product" source="hint analyzer" name="product" value="yiiframework" confidence="HIGH"/>
+            <evidence type="vendor" source="hint analyzer" name="vendor" value="framework" confidence="HIGH"/>
+            <evidence type="product" source="hint analyzer" name="product" value="framework" confidence="HIGH"/>
+            <evidence type="vendor" source="hint analyzer" name="vendor" value="yii" confidence="HIGH"/>
+            <evidence type="product" source="hint analyzer" name="product" value="yii" confidence="HIGH"/>
+        </add>
+    </hint>
+    <hint>
+        <!-- false negative per issue #5525 -->
+        <given>
+            <evidence type="vendor" source="pom" name="groupid" value="com.lowagie"/>
+        </given>
+        <add>
+            <evidence type="vendor" source="hint analyzer" name="vendor" value="itextpdf" confidence="HIGH"/>
+        </add>
+    </hint>
+    <hint>
+        <!-- false negative per issue #6789 -->
+        <given>
+            <evidence type="product" source="msbuild" name="id" value="Newtonsoft.Json"/>
+        </given>
+        <add>
+            <evidence type="product" source="hint analyzer" name="vendor" value="net" confidence="MEDIUM"/>
         </add>
     </hint>
 </hints>

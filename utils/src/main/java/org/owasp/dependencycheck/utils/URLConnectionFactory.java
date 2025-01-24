@@ -28,11 +28,7 @@ import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.net.SocketAddress;
 import java.net.URL;
-import java.net.URLConnection;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
-import javax.net.ssl.HttpsURLConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -128,9 +124,6 @@ public final class URLConnectionFactory {
             }
             throw new URLConnectionFailureException("Error getting connection.", ex);
         }
-        //conn.setRequestProperty("user-agent",
-        //  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
-        configureTLS(url, conn);
         addAuthenticationIfPresent(conn);
         return conn;
     }
@@ -167,12 +160,19 @@ public final class URLConnectionFactory {
                 && StringUtils.isNotEmpty(settings.getString(passwordKey))) {
             final String user = settings.getString(userKey);
             final String password = settings.getString(passwordKey);
-            final String userColonPassword = user + ":" + password;
-            final String basicAuth = "Basic " + Base64.getEncoder().encodeToString(userColonPassword.getBytes(UTF_8));
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Adding user/pw from settings.xml as basic authorization");
+
+            if (user.isEmpty() || password.isEmpty()) {
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("Skip authentication as user and/or password is empty");
+                }
+            } else {
+                final String userColonPassword = user + ":" + password;
+                final String basicAuth = "Basic " + Base64.getEncoder().encodeToString(userColonPassword.getBytes(UTF_8));
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("Adding user/password from settings.xml as basic authorization");
+                }
+                conn.addRequestProperty("Authorization", basicAuth);
             }
-            conn.addRequestProperty("Authorization", basicAuth);
         }
     }
 
@@ -243,30 +243,8 @@ public final class URLConnectionFactory {
         } catch (IOException ioe) {
             throw new URLConnectionFailureException("Error getting connection.", ioe);
         }
-        configureTLS(url, conn);
         addAuthenticationIfPresent(conn);
         return conn;
     }
 
-    /**
-     * If the protocol is HTTPS, this will configure the cipher suites so that
-     * connections can be made to the NVD, and others, using older versions of
-     * Java.
-     *
-     * @param url the URL
-     * @param conn the connection
-     */
-    private void configureTLS(URL url, URLConnection conn) {
-        if ("https".equals(url.getProtocol())) {
-            try {
-                final HttpsURLConnection secCon = (HttpsURLConnection) conn;
-                final SSLSocketFactoryEx factory = new SSLSocketFactoryEx(settings);
-                secCon.setSSLSocketFactory(factory);
-            } catch (NoSuchAlgorithmException ex) {
-                LOGGER.debug("Unsupported algorithm in SSLSocketFactoryEx", ex);
-            } catch (KeyManagementException ex) {
-                LOGGER.debug("Key management exception in SSLSocketFactoryEx", ex);
-            }
-        }
-    }
 }

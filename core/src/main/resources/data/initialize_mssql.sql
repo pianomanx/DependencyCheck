@@ -3,28 +3,31 @@ USE dependencycheck;
 GO
 
 if exists (SELECT 1 FROM sysobjects WHERE name='software' AND xtype='U')
-	drop table software;
+    drop table software;
 if exists (SELECT 1 FROM sysobjects WHERE name='cpeEntry' AND xtype='U')
-	drop table cpeEntry;
+    drop table cpeEntry;
 if exists (SELECT 1 FROM sysobjects WHERE name='reference' AND xtype='U')
-	drop table reference;
+    drop table reference;
 if exists (SELECT 1 FROM sysobjects WHERE name='properties' AND xtype='U')
-	drop table properties;
+    drop table properties;
 if exists (SELECT 1 FROM sysobjects WHERE name='cweEntry' AND xtype='U')
-	drop table cweEntry;
+    drop table cweEntry;
 if exists (SELECT 1 FROM sysobjects WHERE name='cpeEcosystemCache' AND xtype='U')
-	drop table cpeEcosystemCache;
+    drop table cpeEcosystemCache;
 if exists (SELECT 1 FROM sysobjects WHERE name='vulnerability' AND xtype='U')
-	drop table vulnerability;
+    drop table vulnerability;
 if exists (SELECT 1 FROM sysobjects WHERE name='save_property' AND xtype='P')
-	drop procedure save_property;
+    drop procedure save_property;
 if exists (SELECT 1 FROM sysobjects WHERE name='merge_ecosystem' AND xtype='P')
-	drop procedure merge_ecosystem;
+    drop procedure merge_ecosystem;
 if exists (SELECT 1 FROM sysobjects WHERE name='update_vulnerability' AND xtype='P')
-	drop procedure update_vulnerability;
+    drop procedure update_vulnerability;
 if exists (SELECT 1 FROM sysobjects WHERE name='insert_software' AND xtype='P')
-	drop procedure insert_software;    
-
+    drop procedure insert_software;    
+if exists (SELECT 1 FROM sysobjects WHERE name='knownExploited' AND xtype='U')
+    drop table knownExploited;
+if exists (SELECT 1 FROM sysobjects WHERE name='merge_knownexploited' AND xtype='P')
+    drop procedure merge_knownexploited;    
 
 CREATE TABLE vulnerability (id int identity(1,1) PRIMARY KEY, cve VARCHAR(20) UNIQUE,
 	description VARCHAR(8000), v2Severity VARCHAR(20), v2ExploitabilityScore DECIMAL(3,1), 
@@ -36,7 +39,20 @@ CREATE TABLE vulnerability (id int identity(1,1) PRIMARY KEY, cve VARCHAR(20) UN
         v3ImpactScore DECIMAL(3,1), v3AttackVector VARCHAR(20), v3AttackComplexity VARCHAR(20), 
         v3PrivilegesRequired VARCHAR(20), v3UserInteraction VARCHAR(20), v3Scope VARCHAR(20), 
         v3ConfidentialityImpact VARCHAR(20), v3IntegrityImpact VARCHAR(20), v3AvailabilityImpact VARCHAR(20), 
-        v3BaseScore DECIMAL(3,1), v3BaseSeverity VARCHAR(20), v3Version VARCHAR(5));
+        v3BaseScore DECIMAL(3,1), v3BaseSeverity VARCHAR(20), v3Version VARCHAR(5),
+        v4version VARCHAR(5), v4attackVector VARCHAR(15), v4attackComplexity VARCHAR(15),
+        v4attackRequirements VARCHAR(15), v4privilegesRequired VARCHAR(15), v4userInteraction VARCHAR(15),
+        v4vulnConfidentialityImpact VARCHAR(15), v4vulnIntegrityImpact VARCHAR(15), v4vulnAvailabilityImpact VARCHAR(15),
+        v4subConfidentialityImpact VARCHAR(15), v4subIntegrityImpact VARCHAR(15),
+        v4subAvailabilityImpact VARCHAR(15), v4exploitMaturity VARCHAR(20), v4confidentialityRequirement VARCHAR(15),
+        v4integrityRequirement VARCHAR(15), v4availabilityRequirement VARCHAR(15), v4modifiedAttackVector VARCHAR(15),
+        v4modifiedAttackComplexity VARCHAR(15), v4modifiedAttackRequirements VARCHAR(15), v4modifiedPrivilegesRequired VARCHAR(15),
+        v4modifiedUserInteraction VARCHAR(15), v4modifiedVulnConfidentialityImpact VARCHAR(15), v4modifiedVulnIntegrityImpact VARCHAR(15),
+        v4modifiedVulnAvailabilityImpact VARCHAR(15), v4modifiedSubConfidentialityImpact VARCHAR(15), v4modifiedSubIntegrityImpact VARCHAR(15),
+        v4modifiedSubAvailabilityImpact VARCHAR(15), v4safety VARCHAR(15), v4automatable VARCHAR(15), v4recovery VARCHAR(15),
+        v4valueDensity VARCHAR(15), v4vulnerabilityResponseEffort VARCHAR(15), v4providerUrgency VARCHAR(15),
+        v4baseScore DECIMAL(3,1), v4baseSeverity VARCHAR(15), v4threatScore DECIMAL(3,1), v4threatSeverity VARCHAR(15),
+        v4environmentalScore DECIMAL(3,1), v4environmentalSeverity VARCHAR(15), v4source VARCHAR(50), v4type VARCHAR(15));
 
 CREATE TABLE reference (cveid INT, name VARCHAR(1000), url VARCHAR(1000), source VARCHAR(255),
 	CONSTRAINT FK_Reference FOREIGN KEY (cveid) REFERENCES vulnerability(id) ON DELETE CASCADE);
@@ -45,8 +61,8 @@ CREATE TABLE cpeEntry (id INT identity(1,1) PRIMARY KEY, part CHAR(1), vendor VA
     version VARCHAR(255), update_version VARCHAR(255), edition VARCHAR(255), lang VARCHAR(20), sw_edition VARCHAR(255), 
     target_sw VARCHAR(255), target_hw VARCHAR(255), other VARCHAR(255), ecosystem VARCHAR(255));
 
-CREATE TABLE software (cveid INT, cpeEntryId INT, versionEndExcluding VARCHAR(60), versionEndIncluding VARCHAR(60), 
-                       versionStartExcluding VARCHAR(60), versionStartIncluding VARCHAR(60), vulnerable BIT
+CREATE TABLE software (cveid INT, cpeEntryId INT, versionEndExcluding VARCHAR(100), versionEndIncluding VARCHAR(100), 
+                       versionStartExcluding VARCHAR(100), versionStartIncluding VARCHAR(100), vulnerable BIT
     , CONSTRAINT FK_SoftwareCve FOREIGN KEY (cveid) REFERENCES vulnerability(id) ON DELETE CASCADE
     , CONSTRAINT FK_SoftwareCpeProduct FOREIGN KEY (cpeEntryId) REFERENCES cpeEntry(id));
 
@@ -61,8 +77,18 @@ INSERT INTO cpeEcosystemCache (vendor, product, ecosystem) VALUES ('scikit-learn
 INSERT INTO cpeEcosystemCache (vendor, product, ecosystem) VALUES ('unicode', 'international_components_for_unicode', 'MULTIPLE');
 INSERT INTO cpeEcosystemCache (vendor, product, ecosystem) VALUES ('icu-project', 'international_components_for_unicode', 'MULTIPLE');
 
+CREATE TABLE knownExploited (cveID varchar(20) PRIMARY KEY,
+    vendorProject VARCHAR(255),
+    product VARCHAR(255),
+    vulnerabilityName VARCHAR(500),
+    dateAdded CHAR(10),
+    shortDescription VARCHAR(2000),
+    requiredAction VARCHAR(1000),
+    dueDate CHAR(10),
+    notes VARCHAR(2000));
+
 CREATE INDEX idxCwe ON cweEntry(cveid);
-CREATE INDEX idxVulnerability ON vulnerability(cve);
+--CREATE INDEX idxVulnerability ON vulnerability(cve);
 CREATE INDEX idxReference ON reference(cveid);
 CREATE INDEX idxSoftwareCve ON software(cveid);
 CREATE INDEX idxSoftwareCpe ON software(cpeEntryId);
@@ -107,7 +133,20 @@ CREATE PROCEDURE update_vulnerability (
     @v3AttackComplexity VARCHAR(20), @v3PrivilegesRequired VARCHAR(20), @v3UserInteraction VARCHAR(20), 
     @v3Scope VARCHAR(20), @v3ConfidentialityImpact VARCHAR(20), @v3IntegrityImpact VARCHAR(20), 
     @v3AvailabilityImpact VARCHAR(20), @v3BaseScore DECIMAL(3,1), @v3BaseSeverity VARCHAR(20), 
-    @v3Version VARCHAR(5)) AS
+    @v3Version VARCHAR(5), @v4version VARCHAR(5), @v4attackVector VARCHAR(15), @v4attackComplexity VARCHAR(15), 
+    @v4attackRequirements VARCHAR(15), @v4privilegesRequired VARCHAR(15), @v4userInteraction VARCHAR(15), 
+    @v4vulnConfidentialityImpact VARCHAR(15), @v4vulnIntegrityImpact VARCHAR(15), @v4vulnAvailabilityImpact VARCHAR(15), 
+    @v4subConfidentialityImpact VARCHAR(15), @v4subIntegrityImpact VARCHAR(15), @v4subAvailabilityImpact VARCHAR(15), 
+    @v4exploitMaturity VARCHAR(20), @v4confidentialityRequirement VARCHAR(15), @v4integrityRequirement VARCHAR(15), 
+    @v4availabilityRequirement VARCHAR(15), @v4modifiedAttackVector VARCHAR(15), @v4modifiedAttackComplexity VARCHAR(15), 
+    @v4modifiedAttackRequirements VARCHAR(15), @v4modifiedPrivilegesRequired VARCHAR(15), @v4modifiedUserInteraction VARCHAR(15), 
+    @v4modifiedVulnConfidentialityImpact VARCHAR(15), @v4modifiedVulnIntegrityImpact VARCHAR(15), 
+    @v4modifiedVulnAvailabilityImpact VARCHAR(15), @v4modifiedSubConfidentialityImpact VARCHAR(15), 
+    @v4modifiedSubIntegrityImpact VARCHAR(15), @v4modifiedSubAvailabilityImpact VARCHAR(15), @v4safety VARCHAR(15), 
+    @v4automatable VARCHAR(15), @v4recovery VARCHAR(15), @v4valueDensity VARCHAR(15), @v4vulnerabilityResponseEffort VARCHAR(15), 
+    @v4providerUrgency VARCHAR(15), @v4baseScore DECIMAL(3,1), @v4baseSeverity VARCHAR(15), @v4threatScore DECIMAL(3,1), 
+    @v4threatSeverity VARCHAR(15), @v4environmentalScore DECIMAL(3,1), @v4environmentalSeverity VARCHAR(15),
+    @v4source VARCHAR(15), @v4type VARCHAR(15)) AS
 BEGIN
 DECLARE @vulnerabilityId INT;
 
@@ -128,7 +167,24 @@ BEGIN
         v3ExploitabilityScore=@v3ExploitabilityScore, v3ImpactScore=@v3ImpactScore, v3AttackVector=@v3AttackVector, 
         v3AttackComplexity=@v3AttackComplexity, v3PrivilegesRequired=@v3PrivilegesRequired, v3UserInteraction=@v3UserInteraction, 
         v3Scope=@v3Scope, v3ConfidentialityImpact=@v3ConfidentialityImpact, v3IntegrityImpact=@v3IntegrityImpact, 
-        v3AvailabilityImpact=@v3AvailabilityImpact, v3BaseScore=@v3BaseScore, v3BaseSeverity=@v3BaseSeverity, v3Version=@v3Version
+        v3AvailabilityImpact=@v3AvailabilityImpact, v3BaseScore=@v3BaseScore, v3BaseSeverity=@v3BaseSeverity, v3Version=@v3Version,
+        v4version=@v4version, v4attackVector=@v4attackVector, v4attackComplexity=@v4attackComplexity, v4attackRequirements=@v4attackRequirements, 
+        v4privilegesRequired=@v4privilegesRequired, v4userInteraction=@v4userInteraction, v4vulnConfidentialityImpact=@v4vulnConfidentialityImpact, 
+        v4vulnIntegrityImpact=@v4vulnIntegrityImpact, v4vulnAvailabilityImpact=@v4vulnAvailabilityImpact, 
+        v4subConfidentialityImpact=@v4subConfidentialityImpact, v4subIntegrityImpact=@v4subIntegrityImpact, 
+        v4subAvailabilityImpact=@v4subAvailabilityImpact, v4exploitMaturity=@v4exploitMaturity, 
+        v4confidentialityRequirement=@v4confidentialityRequirement, v4integrityRequirement=@v4integrityRequirement, 
+        v4availabilityRequirement=@v4availabilityRequirement, v4modifiedAttackVector=@v4modifiedAttackVector, 
+        v4modifiedAttackComplexity=@v4modifiedAttackComplexity, v4modifiedAttackRequirements=@v4modifiedAttackRequirements, 
+        v4modifiedPrivilegesRequired=@v4modifiedPrivilegesRequired, v4modifiedUserInteraction=@v4modifiedUserInteraction, 
+        v4modifiedVulnConfidentialityImpact=@v4modifiedVulnConfidentialityImpact, v4modifiedVulnIntegrityImpact=@v4modifiedVulnIntegrityImpact, 
+        v4modifiedVulnAvailabilityImpact=@v4modifiedVulnAvailabilityImpact, v4modifiedSubConfidentialityImpact=@v4modifiedSubConfidentialityImpact, 
+        v4modifiedSubIntegrityImpact=@v4modifiedSubIntegrityImpact, v4modifiedSubAvailabilityImpact=@v4modifiedSubAvailabilityImpact, 
+        v4safety=@v4safety, v4automatable=@v4automatable, v4recovery=@v4recovery, v4valueDensity=@v4valueDensity, 
+        v4vulnerabilityResponseEffort=@v4vulnerabilityResponseEffort, v4providerUrgency=@v4providerUrgency, 
+        v4baseScore=@v4baseScore, v4baseSeverity=@v4baseSeverity, v4threatScore=@v4threatScore, 
+        v4threatSeverity=@v4threatSeverity, v4environmentalScore=@v4environmentalScore, 
+        v4environmentalSeverity=@v4environmentalSeverity, v4source=@v4source, v4type=@v4type
     WHERE id=@vulnerabilityId;
 END
 ELSE
@@ -143,7 +199,18 @@ BEGIN
         v3ImpactScore, v3AttackVector, v3AttackComplexity, 
         v3PrivilegesRequired, v3UserInteraction, v3Scope, 
         v3ConfidentialityImpact, v3IntegrityImpact, v3AvailabilityImpact, 
-        v3BaseScore, v3BaseSeverity, v3Version)
+        v3BaseScore, v3BaseSeverity, v3Version, v4version, v4attackVector, 
+        v4attackComplexity, v4attackRequirements, v4privilegesRequired, v4userInteraction, 
+        v4vulnConfidentialityImpact, v4vulnIntegrityImpact, v4vulnAvailabilityImpact, 
+        v4subConfidentialityImpact, v4subIntegrityImpact, v4subAvailabilityImpact, 
+        v4exploitMaturity, v4confidentialityRequirement, v4integrityRequirement, 
+        v4availabilityRequirement, v4modifiedAttackVector, v4modifiedAttackComplexity, 
+        v4modifiedAttackRequirements, v4modifiedPrivilegesRequired, v4modifiedUserInteraction, 
+        v4modifiedVulnConfidentialityImpact, v4modifiedVulnIntegrityImpact, v4modifiedVulnAvailabilityImpact, 
+        v4modifiedSubConfidentialityImpact, v4modifiedSubIntegrityImpact, v4modifiedSubAvailabilityImpact, 
+        v4safety, v4automatable, v4recovery, v4valueDensity, v4vulnerabilityResponseEffort, 
+        v4providerUrgency, v4baseScore, v4baseSeverity, v4threatScore, v4threatSeverity, 
+        v4environmentalScore, v4environmentalSeverity, v4source, v4type)
         VALUES (@cveId, @description, 
         @v2Severity, @v2ExploitabilityScore, 
         @v2ImpactScore, @v2AcInsufInfo, @v2ObtainAllPrivilege, 
@@ -154,7 +221,19 @@ BEGIN
         @v3ImpactScore, @v3AttackVector, @v3AttackComplexity, 
         @v3PrivilegesRequired, @v3UserInteraction, @v3Scope, 
         @v3ConfidentialityImpact, @v3IntegrityImpact, @v3AvailabilityImpact, 
-        @v3BaseScore, @v3BaseSeverity, @v3Version);
+        @v3BaseScore, @v3BaseSeverity, @v3Version, @v4version, @v4attackVector, 
+        @v4attackComplexity, @v4attackRequirements, @v4privilegesRequired, 
+        @v4userInteraction, @v4vulnConfidentialityImpact, @v4vulnIntegrityImpact, 
+        @v4vulnAvailabilityImpact, @v4subConfidentialityImpact, @v4subIntegrityImpact, 
+        @v4subAvailabilityImpact, @v4exploitMaturity, @v4confidentialityRequirement, 
+        @v4integrityRequirement, @v4availabilityRequirement, @v4modifiedAttackVector, 
+        @v4modifiedAttackComplexity, @v4modifiedAttackRequirements, @v4modifiedPrivilegesRequired, 
+        @v4modifiedUserInteraction, @v4modifiedVulnConfidentialityImpact, @v4modifiedVulnIntegrityImpact, 
+        @v4modifiedVulnAvailabilityImpact, @v4modifiedSubConfidentialityImpact, @v4modifiedSubIntegrityImpact, 
+        @v4modifiedSubAvailabilityImpact, @v4safety, @v4automatable, @v4recovery, @v4valueDensity, 
+        @v4vulnerabilityResponseEffort, @v4providerUrgency, @v4baseScore, @v4baseSeverity, 
+        @v4threatScore, @v4threatSeverity, @v4environmentalScore, @v4environmentalSeverity,
+        @v4source, @v4type);
         
         SET @vulnerabilityId = SCOPE_IDENTITY();
 END;
@@ -169,8 +248,8 @@ CREATE PROCEDURE insert_software (
     @vulnerabilityId INT, @part CHAR(1), @vendor VARCHAR(255), @product VARCHAR(255),
     @version VARCHAR(255), @update_version VARCHAR(255), @edition VARCHAR(255), @lang VARCHAR(20),
     @sw_edition VARCHAR(255), @target_sw VARCHAR(255), @target_hw VARCHAR(255), @other VARCHAR(255), 
-    @ecosystem VARCHAR(255), @versionEndExcluding VARCHAR(50), @versionEndIncluding VARCHAR(50), 
-    @versionStartExcluding VARCHAR(50), @versionStartIncluding VARCHAR(50), @vulnerable BIT) AS
+    @ecosystem VARCHAR(255), @versionEndExcluding VARCHAR(100), @versionEndIncluding VARCHAR(100), 
+    @versionStartExcluding VARCHAR(100), @versionStartIncluding VARCHAR(100), @vulnerable BIT) AS
 BEGIN
     DECLARE @cpeId INT;
     DECLARE @currentEcosystem VARCHAR(255);
@@ -204,10 +283,35 @@ BEGIN
             @versionStartExcluding, @versionStartIncluding, @vulnerable);
 END;
 
+GO
+
+CREATE PROCEDURE merge_knownexploited (@cveID varchar(20),
+    @vendorProject VARCHAR(255),
+    @product VARCHAR(255),
+    @vulnerabilityName VARCHAR(500),
+    @dateAdded CHAR(10),
+    @shortDescription VARCHAR(2000),
+    @requiredAction VARCHAR(1000),
+    @dueDate CHAR(10),
+    @notes VARCHAR(2000))
+AS
+BEGIN
+IF EXISTS(SELECT * FROM knownExploited WHERE cveID=@cveID)
+    UPDATE knownExploited
+    SET vendorProject=@vendorProject, product=@product, vulnerabilityName=@vulnerabilityName, 
+        dateAdded=@dateAdded, shortDescription=@shortDescription, requiredAction=@requiredAction, 
+        dueDate=@dueDate, notes=@notes
+    WHERE cveID=@cveID;
+ELSE
+    INSERT INTO knownExploited (vendorProject, product, vulnerabilityName,
+        dateAdded, shortDescription, requiredAction, dueDate, notes, cveID) 
+    VALUES (@vendorProject, @product, @vulnerabilityName,
+        @dateAdded, @shortDescription, @requiredAction, @dueDate, @notes, @cveID);
+END;
 
 GO
 
-INSERT INTO properties(id,value) VALUES ('version','5.2.1');
+INSERT INTO properties(id,value) VALUES ('version','5.5');
 
 GO
 /**

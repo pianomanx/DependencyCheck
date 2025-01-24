@@ -17,14 +17,13 @@
  */
 package org.owasp.dependencycheck.taskdefs;
 
-import java.util.Optional;
-
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
 import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.data.nvdcve.DatabaseException;
 import org.owasp.dependencycheck.data.update.exception.UpdateException;
-import org.owasp.dependencycheck.utils.CveUrlParser;
+import org.owasp.dependencycheck.utils.Downloader;
+import org.owasp.dependencycheck.utils.InvalidSettingException;
 import org.owasp.dependencycheck.utils.Settings;
 import org.slf4j.impl.StaticLoggerBinder;
 
@@ -39,6 +38,93 @@ import org.slf4j.impl.StaticLoggerBinder;
 //on unrelated ODC clients (the DependencyCheckScanAgent).
 @SuppressWarnings("common-java:DuplicatedBlocks")
 public class Update extends Purge {
+
+    /**
+     * The URL to (a mirror of) the RetireJS JSON data.
+     */
+    private String retireJsUrl;
+    /**
+     * The user to download the RetireJS JSON data from an HTTP Basic auth protected location.
+     */
+    private String retireJsUrlUser;
+    /**
+     * The password to download the RetireJS JSON data from an HTTP Basic auth protected location.
+     */
+    private String retireJsUrlPassword;
+    /**
+     * The token to download the RetireJS JSON data from an HTTP Bearer auth protected location.
+     */
+    private String retireJsUrlBearerToken;
+    /**
+     * Whether or not the RetireJS JSON repository will be updated regardless of the
+     * `autoupdate` settings. Defaults to false.
+     */
+    private Boolean retireJsForceUpdate;
+    /**
+     * Whether or not the Known Exploited Vulnerability Analyzer is enabled.
+     */
+    private Boolean knownExploitedEnabled;
+    /**
+     * The URL to the known exploited vulnerabilities JSON datafeed.
+     */
+    private String knownExploitedUrl;
+    /**
+     * The number of hours before checking for updates for the known exploited vulnerabilities JSON datafeed.
+     */
+    private Integer knownExploitedValidForHours;
+    /**
+     * The user to download the known exploited vulnerabilities JSON datafeed from an HTTP Basic auth protected location.
+     */
+    private String knownExploitedUser;
+    /**
+     * The password to download the known exploited vulnerabilities JSON datafeed from an HTTP Basic auth protected location.
+     */
+    private String knownExploitedPassword;
+    /**
+     * The token to download the known exploited vulnerabilities JSON datafeed from an HTTP Bearer auth protected location.
+     */
+    private String knownExploitedBearerToken;
+    /**
+     * The NVD API endpoint.
+     */
+    private String nvdApiEndpoint;
+    /**
+     * The NVD API Key.
+     */
+    private String nvdApiKey;
+    /**
+     * The maximum number of retry requests for a single call to the NVD API.
+     */
+    private Integer nvdMaxRetryCount;
+    /**
+     * The number of hours to wait before checking for new updates from the NVD.
+     */
+    private Integer nvdValidForHours;
+    /**
+     * The NVD API Data Feed URL.
+     */
+    private String nvdDatafeedUrl;
+    /**
+     * The username to download the NVD Data feed from an HTTP Basic auth protected location.
+     */
+    private String nvdUser;
+    /**
+     * The password to download the NVD Data feed from an HTTP Basic auth protected location.
+     */
+    private String nvdPassword;
+    /**
+     * The token to download the NVD Data feed from an HTTP Bearer auth protected location.
+     */
+    private String nvdBearerToken;
+    /**
+     * The time in milliseconds to wait between downloading NVD API data.
+     */
+    private Integer nvdApiDelay;
+
+    /**
+     * The number of records per page of NVD API data.
+     */
+    private Integer nvdApiResultsPerPage;
 
     /**
      * The Proxy Server.
@@ -89,25 +175,45 @@ public class Update extends Purge {
      */
     private String databasePassword;
     /**
-     * The URL for the modified NVD CVE JSON file.
+     * The number of hours to wait before re-checking hosted suppressions file
+     * for updates.
      */
-    private String cveUrlModified;
+    private Integer hostedSuppressionsValidForHours;
     /**
-     * Base Data Mirror URL for CVE JSON files.
+     * The userid for the hostedSuppressions file.
+     * <br/>
+     * Only needs configuration if you customized the hostedSuppressionsUrl to a custom server that requires Basic Auth
      */
-    private String cveUrlBase;
+    private String hostedSuppressionsUser;
     /**
-     * The wait time in milliseconds between downloads from the NVD.
+     * The password for the hostedSuppressions file.
+     * <br/>
+     * Only needs configuration if you customized the hostedSuppressionsUrl to a custom server that requires Basic Auth
      */
-    private String cveWaitTime;
+    private String hostedSuppressionsPassword;
     /**
-     * The number of hours to wait before re-checking for updates.
+     * The (Bearer authentication) API Token for the hostedSuppressions file.
+     * <br/>
+     * Only needs configuration if you customized the hostedSuppressionsUrl to a custom server that requires Bearer Auth
      */
-    private Integer cveValidForHours;
+    private String hostedSuppressionsBearerToken;
     /**
-     * Specify the first year of NVD CVE data to download; default is 2002.
+     * Whether the hosted suppressions file will be updated regardless of the
+     * `autoupdate` settings. Defaults to false.
      */
-    private Integer cveStartYear;
+    private Boolean hostedSuppressionsForceUpdate;
+    /**
+     * Whether the hosted suppressions file will be used. Defaults to true.
+     */
+    private Boolean hostedSuppressionsEnabled;
+    /**
+     * The URL to hosted suppressions file with base FP suppressions.
+     */
+    private String hostedSuppressionsUrl = null;
+    /**
+     * Whether or not the RetireJS Analyzer is enabled.
+     */
+    private Boolean retireJsAnalyzerEnabled;
 
     /**
      * Construct a new UpdateTask.
@@ -120,12 +226,100 @@ public class Update extends Purge {
     }
 
     /**
-     * Get the value of proxyServer.
+     * Set the value of nvdApiEndpoint.
      *
-     * @return the value of proxyServer
+     * @param nvdApiEndpoint new value of nvdApiEndpoint
      */
-    public String getProxyServer() {
-        return proxyServer;
+    public void setNvdApiEndpoint(String nvdApiEndpoint) {
+        this.nvdApiEndpoint = nvdApiEndpoint;
+    }
+
+    /**
+     * Set the value of nvdApiKey.
+     *
+     * @param nvdApiKey new value of nvdApiKey
+     */
+    public void setNvdApiKey(String nvdApiKey) {
+        this.nvdApiKey = nvdApiKey;
+    }
+
+    /**
+     * Set the value of nvdMaxRetryCount.
+     *
+     * @param nvdMaxRetryCount new value of nvdMaxRetryCount
+     */
+    public void setNvdMaxRetryCount(Integer nvdMaxRetryCount) {
+        if (nvdMaxRetryCount > 0) {
+            this.nvdMaxRetryCount = nvdMaxRetryCount;
+        } else {
+            throw new BuildException("Invalid setting: `nvdMaxRetryCount` must be greater than zero");
+        }
+    }
+
+    /**
+     * Set the value of nvdValidForHours.
+     *
+     * @param nvdValidForHours new value of nvdValidForHours
+     */
+    public void setNvdValidForHours(int nvdValidForHours) {
+        if (nvdValidForHours >= 0) {
+            this.nvdValidForHours = nvdValidForHours;
+        } else {
+            throw new BuildException("Invalid setting: `nvdValidForHours` must be 0 or greater");
+        }
+    }
+
+    /**
+     * Set the value of nvdDatafeedUrl.
+     *
+     * @param nvdDatafeedUrl new value of nvdDatafeedUrl
+     */
+    public void setNvdDatafeedUrl(String nvdDatafeedUrl) {
+        this.nvdDatafeedUrl = nvdDatafeedUrl;
+    }
+
+    /**
+     * Set the value of nvdUser.
+     *
+     * @param nvdUser new value of nvdUser
+     */
+    public void setNvdUser(String nvdUser) {
+        this.nvdUser = nvdUser;
+    }
+
+    /**
+     * Set the value of nvdPassword.
+     *
+     * @param nvdPassword new value of nvdPassword
+     */
+    public void setNvdPassword(String nvdPassword) {
+        this.nvdPassword = nvdPassword;
+    }
+
+    /**
+     * Sets the token to download the NVD Data feed from an HTTP Bearer auth protected location.
+     * @param nvdBearerToken The bearer token
+     */
+    public void setNvdBearerToken(String nvdBearerToken) {
+        this.nvdBearerToken = nvdBearerToken;
+    }
+
+    /**
+     * Set the value of nvdApiDelay.
+     *
+     * @param nvdApiDelay new value of nvdApiDelay
+     */
+    public void setNvdApiDelay(Integer nvdApiDelay) {
+        this.nvdApiDelay = nvdApiDelay;
+    }
+
+    /**
+     * Set the value of nvdApiResultsPerPage.
+     *
+     * @param nvdApiResultsPerPage new value of nvdApiResultsPerPage
+     */
+    public void setNvdApiResultsPerPage(Integer nvdApiResultsPerPage) {
+        this.nvdApiResultsPerPage = nvdApiResultsPerPage;
     }
 
     /**
@@ -138,30 +332,12 @@ public class Update extends Purge {
     }
 
     /**
-     * Get the value of proxyPort.
-     *
-     * @return the value of proxyPort
-     */
-    public String getProxyPort() {
-        return proxyPort;
-    }
-
-    /**
      * Set the value of proxyPort.
      *
      * @param proxyPort new value of proxyPort
      */
     public void setProxyPort(String proxyPort) {
         this.proxyPort = proxyPort;
-    }
-
-    /**
-     * Get the value of proxyUsername.
-     *
-     * @return the value of proxyUsername
-     */
-    public String getProxyUsername() {
-        return proxyUsername;
     }
 
     /**
@@ -174,30 +350,12 @@ public class Update extends Purge {
     }
 
     /**
-     * Get the value of proxyPassword.
-     *
-     * @return the value of proxyPassword
-     */
-    public String getProxyPassword() {
-        return proxyPassword;
-    }
-
-    /**
      * Set the value of proxyPassword.
      *
      * @param proxyPassword new value of proxyPassword
      */
     public void setProxyPassword(String proxyPassword) {
         this.proxyPassword = proxyPassword;
-    }
-
-    /**
-     * Get the value of nonProxyHosts.
-     *
-     * @return the value of nonProxyHosts
-     */
-    public String getNonProxyHosts() {
-        return nonProxyHosts;
     }
 
     /**
@@ -210,30 +368,12 @@ public class Update extends Purge {
     }
 
     /**
-     * Get the value of connectionTimeout.
-     *
-     * @return the value of connectionTimeout
-     */
-    public String getConnectionTimeout() {
-        return connectionTimeout;
-    }
-
-    /**
      * Set the value of connectionTimeout.
      *
      * @param connectionTimeout new value of connectionTimeout
      */
     public void setConnectionTimeout(String connectionTimeout) {
         this.connectionTimeout = connectionTimeout;
-    }
-
-    /**
-     * Get the value of readTimeout.
-     *
-     * @return the value of readTimeout
-     */
-    public String getReadTimeout() {
-        return readTimeout;
     }
 
     /**
@@ -246,30 +386,12 @@ public class Update extends Purge {
     }
 
     /**
-     * Get the value of databaseDriverName.
-     *
-     * @return the value of databaseDriverName
-     */
-    public String getDatabaseDriverName() {
-        return databaseDriverName;
-    }
-
-    /**
      * Set the value of databaseDriverName.
      *
      * @param databaseDriverName new value of databaseDriverName
      */
     public void setDatabaseDriverName(String databaseDriverName) {
         this.databaseDriverName = databaseDriverName;
-    }
-
-    /**
-     * Get the value of databaseDriverPath.
-     *
-     * @return the value of databaseDriverPath
-     */
-    public String getDatabaseDriverPath() {
-        return databaseDriverPath;
     }
 
     /**
@@ -282,30 +404,12 @@ public class Update extends Purge {
     }
 
     /**
-     * Get the value of connectionString.
-     *
-     * @return the value of connectionString
-     */
-    public String getConnectionString() {
-        return connectionString;
-    }
-
-    /**
      * Set the value of connectionString.
      *
      * @param connectionString new value of connectionString
      */
     public void setConnectionString(String connectionString) {
         this.connectionString = connectionString;
-    }
-
-    /**
-     * Get the value of databaseUser.
-     *
-     * @return the value of databaseUser
-     */
-    public String getDatabaseUser() {
-        return databaseUser;
     }
 
     /**
@@ -318,15 +422,6 @@ public class Update extends Purge {
     }
 
     /**
-     * Get the value of databasePassword.
-     *
-     * @return the value of databasePassword
-     */
-    public String getDatabasePassword() {
-        return databasePassword;
-    }
-
-    /**
      * Set the value of databasePassword.
      *
      * @param databasePassword new value of databasePassword
@@ -336,98 +431,157 @@ public class Update extends Purge {
     }
 
     /**
-     * Set the value of cveUrlModified.
+     * Set the value of hostedSuppressionsValidForHours.
      *
-     * @param cveUrlModified new value of cveUrlModified
+     * @param hostedSuppressionsValidForHours new value of
+     * hostedSuppressionsValidForHours
      */
-    public void setCveUrlModified(String cveUrlModified) {
-        this.cveUrlModified = cveUrlModified;
+    public void setHostedSuppressionsValidForHours(final Integer hostedSuppressionsValidForHours) {
+        this.hostedSuppressionsValidForHours = hostedSuppressionsValidForHours;
+    }
+
+    public void setHostedSuppressionsUser(String hostedSuppressionsUser) {
+        this.hostedSuppressionsUser = hostedSuppressionsUser;
+    }
+
+    public void setHostedSuppressionsPassword(String hostedSuppressionsPassword) {
+        this.hostedSuppressionsPassword = hostedSuppressionsPassword;
+    }
+
+    public void setHostedSuppressionsBearerToken(String hostedSuppressionsBearerToken) {
+        this.hostedSuppressionsBearerToken = hostedSuppressionsBearerToken;
     }
 
     /**
-     * Get the value of cveUrlModified.
+     * Set the value of hostedSuppressionsForceUpdate.
      *
-     * @return the value of cveUrlModified
+     * @param hostedSuppressionsForceUpdate new value of
+     * hostedSuppressionsForceUpdate
      */
-    public String getCveUrlModified() {
-        return cveUrlModified;
+    public void setHostedSuppressionsForceUpdate(final Boolean hostedSuppressionsForceUpdate) {
+        this.hostedSuppressionsForceUpdate = hostedSuppressionsForceUpdate;
     }
 
     /**
-     * Get the value of cveUrlBase.
+     * Set the value of hostedSuppressionsEnabled.
      *
-     * @return the value of cveUrlBase
+     * @param hostedSuppressionsEnabled new value of hostedSuppressionsEnabled
      */
-    public String getCveUrlBase() {
-        return cveUrlBase;
+    public void setHostedSuppressionsEnabled(Boolean hostedSuppressionsEnabled) {
+        this.hostedSuppressionsEnabled = hostedSuppressionsEnabled;
     }
 
     /**
-     * Set the value of cveUrlBase.
+     * Set the value of hostedSuppressionsUrl.
      *
-     * @param cveUrlBase new value of cveUrlBase
+     * @param hostedSuppressionsUrl new value of hostedSuppressionsUrl
      */
-    public void setCveUrlBase(String cveUrlBase) {
-        this.cveUrlBase = cveUrlBase;
+    public void setHostedSuppressionsUrl(final String hostedSuppressionsUrl) {
+        this.hostedSuppressionsUrl = hostedSuppressionsUrl;
     }
 
     /**
-     * Get the value of cveUrlBase.
+     * Sets the the knownExploitedUrl.
      *
-     * @return the value of cveUrlBase
+     * @param knownExploitedUrl the URL
      */
-    public String getCveWaitTime() {
-        return cveWaitTime;
+    public void setKnownExploitedUrl(String knownExploitedUrl) {
+        this.knownExploitedUrl = knownExploitedUrl;
+    }
+
+    public void setKnownExploitedValidForHours(Integer knownExploitedValidForHours) {
+        this.knownExploitedValidForHours = knownExploitedValidForHours;
     }
 
     /**
-     * Set the value of cveWaitTime.
+     * Sets the user for downloading the knownExploitedUrl from a HTTP Basic auth protected location.
      *
-     * @param cveWaitTime new value of cveWaitTime
+     * @param knownExploitedUser the user
      */
-    public void setCveWaitTime(String cveWaitTime) {
-        this.cveWaitTime = cveWaitTime;
+    public void setKnownExploitedUser(String knownExploitedUser) {
+        this.knownExploitedUser = knownExploitedUser;
     }
 
     /**
-     * Get the value of cveValidForHours.
+     * Sets the password for downloading the knownExploitedUrl from a HTTP Basic auth protected location..
      *
-     * @return the value of cveValidForHours
+     * @param knownExploitedPassword the password
      */
-    public Integer getCveValidForHours() {
-        return cveValidForHours;
+    public void setKnownExploitedPassword(String knownExploitedPassword) {
+        this.knownExploitedPassword = knownExploitedPassword;
     }
 
     /**
-     * Set the value of cveValidForHours.
+     * Sets the token for downloading the knownExploitedUrl from an HTTP Bearer auth protected location..
      *
-     * @param cveValidForHours new value of cveValidForHours
+     * @param knownExploitedBearerToken the token
      */
-    public void setCveValidForHours(Integer cveValidForHours) {
-        this.cveValidForHours = cveValidForHours;
+    public void setKnownExploitedBearerToken(String knownExploitedBearerToken) {
+        this.knownExploitedBearerToken = knownExploitedBearerToken;
     }
 
     /**
-     * Get the value of cveStartYear.
+     * Sets whether the analyzer is enabled.
      *
-     * @return the value of cveStartYear
+     * @param knownExploitedEnabled the value of the new setting
      */
-    public Integer getCveStartYear() {
-        return cveStartYear;
+    public void setKnownExploitedEnabled(Boolean knownExploitedEnabled) {
+        this.knownExploitedEnabled = knownExploitedEnabled;
     }
 
     /**
-     * Set the value of cveStartYear.
+     * Set the value of the Retire JS repository URL.
      *
-     * @param cveStartYear new value of cveStartYear
+     * @param retireJsUrl new value of retireJsUrl
      */
-    public void setCveStartYear(Integer cveStartYear) {
-        if (cveStartYear != null && cveStartYear < 2002) {
-            log("Invalid Configuration: cveStartYear must be 2002 or greater", Project.MSG_ERR);
-            this.cveStartYear = 2002;
-        } else {
-            this.cveStartYear = cveStartYear;
-        }
+    public void setRetireJsUrl(String retireJsUrl) {
+        this.retireJsUrl = retireJsUrl;
+    }
+
+    /**
+     * Sets the user to download the RetireJS JSON data from an HTTP Basic auth protected location.
+     *
+     * @param retireJsUrlUser new value of retireJsUrlUser
+     */
+    public void setRetireJsUrlUser(String retireJsUrlUser) {
+        this.retireJsUrlUser = retireJsUrlUser;
+    }
+
+    /**
+     * Sets the password to download the RetireJS JSON data from an HTTP Basic auth protected location.
+     *
+     * @param retireJsUrlPassword new value of retireJsUrlPassword
+     */
+    public void setRetireJsUrlPassword(String retireJsUrlPassword) {
+        this.retireJsUrlPassword = retireJsUrlPassword;
+    }
+
+    /**
+     * Sets the token to download the RetireJS JSON data from an HTTP Bearer auth protected location.
+     *
+     * @param retireJsUrlBearerToken new value of retireJsUrlBearerToken
+     */
+    public void setRetireJsUrlBearerToken(String retireJsUrlBearerToken) {
+        this.retireJsUrlBearerToken = retireJsUrlBearerToken;
+    }
+
+    /**
+     * Set the value of retireJsForceUpdate.
+     *
+     * @param retireJsForceUpdate new value of
+     * retireJsForceUpdate
+     */
+    public void setRetireJsForceUpdate(Boolean retireJsForceUpdate) {
+        this.retireJsForceUpdate = retireJsForceUpdate;
+    }
+
+    /**
+     * Set the value of retireJsAnalyzerEnabled.
+     *
+     * @param retireJsAnalyzerEnabled new value of retireJsAnalyzerEnabled
+     */
+    public void setRetireJsAnalyzerEnabled(Boolean retireJsAnalyzerEnabled) {
+        this.retireJsAnalyzerEnabled = retireJsAnalyzerEnabled;
     }
 
     /**
@@ -440,8 +594,13 @@ public class Update extends Purge {
     //see note on `Check.dealWithReferences()` for information on this suppression
     @SuppressWarnings("squid:RedundantThrowsDeclarationCheck")
     @Override
-    public void execute() throws BuildException {
+    protected void executeWithContextClassloader() throws BuildException {
         populateSettings();
+        try {
+            Downloader.getInstance().configure(getSettings());
+        } catch (InvalidSettingException e) {
+            throw new BuildException(e);
+        }
         try (Engine engine = new Engine(Update.class.getClassLoader(), getSettings())) {
             engine.doUpdates();
         } catch (UpdateException ex) {
@@ -485,24 +644,37 @@ public class Update extends Purge {
         getSettings().setStringIfNotEmpty(Settings.KEYS.DB_USER, databaseUser);
         getSettings().setStringIfNotEmpty(Settings.KEYS.DB_PASSWORD, databasePassword);
 
-        final String cveModifiedJson = Optional.ofNullable(cveUrlModified)
-                .filter(url -> !url.isEmpty())
-                .orElseGet(this::getDefaultCveUrlModified);
-        getSettings().setStringIfNotEmpty(Settings.KEYS.CVE_MODIFIED_JSON, cveModifiedJson);
-        getSettings().setStringIfNotEmpty(Settings.KEYS.CVE_BASE_JSON, cveUrlBase);
-        getSettings().setStringIfNotEmpty(Settings.KEYS.CVE_DOWNLOAD_WAIT_TIME, cveWaitTime);
-        getSettings().setIntIfNotNull(Settings.KEYS.CVE_START_YEAR, cveStartYear);
-        if (cveValidForHours != null) {
-            if (cveValidForHours >= 0) {
-                getSettings().setInt(Settings.KEYS.CVE_CHECK_VALID_FOR_HOURS, cveValidForHours);
-            } else {
-                throw new BuildException("Invalid setting: `cpeValidForHours` must be 0 or greater");
-            }
-        }
-    }
+        getSettings().setStringIfNotEmpty(Settings.KEYS.KEV_URL, knownExploitedUrl);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.KEV_USER, knownExploitedUser);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.KEV_PASSWORD, knownExploitedPassword);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.KEV_BEARER_TOKEN, knownExploitedBearerToken);
+        getSettings().setIntIfNotNull(Settings.KEYS.KEV_CHECK_VALID_FOR_HOURS, knownExploitedValidForHours);
+        getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_KNOWN_EXPLOITED_ENABLED, knownExploitedEnabled);
 
-    private String getDefaultCveUrlModified() {
-        return CveUrlParser.newInstance(getSettings())
-                .getDefaultCveUrlModified(cveUrlBase);
+        getSettings().setStringIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_URL, retireJsUrl);
+        getSettings().setStringIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_USER, retireJsUrlUser);
+        getSettings().setStringIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_PASSWORD, retireJsUrlPassword);
+        getSettings().setStringIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_BEARER_TOKEN, retireJsUrlBearerToken);
+        getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_FORCEUPDATE, retireJsForceUpdate);
+        getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_ENABLED, retireJsAnalyzerEnabled);
+
+        getSettings().setStringIfNotEmpty(Settings.KEYS.HOSTED_SUPPRESSIONS_URL, hostedSuppressionsUrl);
+        getSettings().setIntIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_VALID_FOR_HOURS, hostedSuppressionsValidForHours);
+        getSettings().setStringIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_USER, hostedSuppressionsUser);
+        getSettings().setStringIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_PASSWORD, hostedSuppressionsPassword);
+        getSettings().setStringIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_BEARER_TOKEN, hostedSuppressionsBearerToken);
+        getSettings().setBooleanIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_FORCEUPDATE, hostedSuppressionsForceUpdate);
+        getSettings().setBooleanIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_ENABLED, hostedSuppressionsEnabled);
+
+        getSettings().setStringIfNotEmpty(Settings.KEYS.NVD_API_KEY, nvdApiKey);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.NVD_API_ENDPOINT, nvdApiEndpoint);
+        getSettings().setIntIfNotNull(Settings.KEYS.NVD_API_DELAY, nvdApiDelay);
+        getSettings().setIntIfNotNull(Settings.KEYS.NVD_API_RESULTS_PER_PAGE, nvdApiResultsPerPage);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.NVD_API_DATAFEED_URL, nvdDatafeedUrl);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.NVD_API_DATAFEED_USER, nvdUser);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.NVD_API_DATAFEED_PASSWORD, nvdPassword);
+        getSettings().setStringIfNotEmpty(Settings.KEYS.NVD_API_DATAFEED_BEARER_TOKEN, nvdBearerToken);
+        getSettings().setIntIfNotNull(Settings.KEYS.NVD_API_MAX_RETRY_COUNT, nvdMaxRetryCount);
+        getSettings().setIntIfNotNull(Settings.KEYS.NVD_API_VALID_FOR_HOURS, nvdValidForHours);
     }
 }

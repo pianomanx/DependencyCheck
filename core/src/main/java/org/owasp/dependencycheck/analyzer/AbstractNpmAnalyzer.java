@@ -21,15 +21,13 @@ import com.github.packageurl.MalformedPackageURLException;
 import com.github.packageurl.PackageURL;
 import com.github.packageurl.PackageURL.StandardTypes;
 import com.github.packageurl.PackageURLBuilder;
-import com.vdurmont.semver4j.Semver;
-import com.vdurmont.semver4j.Semver.SemverType;
-import com.vdurmont.semver4j.SemverException;
+import org.semver4j.Semver;
+import org.semver4j.SemverException;
 import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.data.nodeaudit.Advisory;
 import org.owasp.dependencycheck.data.nodeaudit.NodeAuditSearch;
 import org.owasp.dependencycheck.dependency.Confidence;
 import org.owasp.dependencycheck.dependency.Dependency;
-import org.owasp.dependencycheck.dependency.Reference;
 import org.owasp.dependencycheck.dependency.Vulnerability;
 import org.owasp.dependencycheck.dependency.VulnerableSoftware;
 import org.owasp.dependencycheck.dependency.VulnerableSoftwareBuilder;
@@ -41,17 +39,18 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.concurrent.ThreadSafe;
-import javax.json.Json;
-import javax.json.JsonArray;
-import javax.json.JsonObject;
-import javax.json.JsonObjectBuilder;
-import javax.json.JsonString;
-import javax.json.JsonValue;
-import javax.json.JsonValue.ValueType;
+import jakarta.json.Json;
+import jakarta.json.JsonArray;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonString;
+import jakarta.json.JsonValue;
+import jakarta.json.JsonValue.ValueType;
 import org.apache.commons.collections4.MultiValuedMap;
 import org.apache.commons.lang3.StringUtils;
 import org.owasp.dependencycheck.analyzer.exception.AnalysisException;
@@ -452,14 +451,28 @@ public abstract class AbstractNpmAnalyzer extends AbstractFileTypeAnalyzer {
             //Create a new vulnerability out of the advisory returned by nsp.
             final Vulnerability vuln = new Vulnerability();
             vuln.setDescription(advisory.getOverview());
-            vuln.setName(String.valueOf(advisory.getId()));
+            vuln.setName(String.valueOf(advisory.getGhsaId()));
             vuln.setUnscoredSeverity(advisory.getSeverity());
+            vuln.setCvssV3(advisory.getCvssV3());
             vuln.setSource(Vulnerability.Source.NPM);
-            vuln.addReference(
-                    "Advisory " + advisory.getId() + ": " + advisory.getTitle(),
-                    advisory.getReferences(),
-                    null
-            );
+            for (String cwe : advisory.getCwes()) {
+                vuln.addCwe(cwe);
+            }
+            if (advisory.getReferences() != null) {
+                final String[] references = advisory.getReferences().split("\\n");
+                for (String reference : references) {
+                    if (reference.length() > 3) {
+                        String url = reference.substring(2);
+                        try {
+                            new URL(url);
+                        } catch (MalformedURLException ignored) {
+                            // reference is not a format-valid URL, so null it to make the reference be used as plaintext
+                            url = null;
+                        }
+                        vuln.addReference("NPM Advisory reference: ", url == null ? reference : url, url);
+                    }
+                }
+            }
 
             //Create a single vulnerable software object - these do not use CPEs unlike the NVD.
             final VulnerableSoftwareBuilder builder = new VulnerableSoftwareBuilder();
@@ -491,16 +504,13 @@ public abstract class AbstractNpmAnalyzer extends AbstractFileTypeAnalyzer {
      * @param vuln the vulnerability to add
      */
     protected void replaceOrAddVulnerability(Dependency dependency, Vulnerability vuln) {
-        boolean found = false;
-        for (Vulnerability existing : dependency.getVulnerabilities()) {
-            for (Reference ref : existing.getReferences()) {
-                if (ref.getName() != null
-                        && vuln.getSource().toString().equals("NPM")
-                        && ref.getName().equals("https://nodesecurity.io/advisories/" + vuln.getName())) {
-                    found = true;
-                }
-            }
-        }
+        final boolean found = vuln.getSource() == Vulnerability.Source.NPM
+                && dependency.getVulnerabilities().stream().anyMatch(existing -> {
+                    return existing.getReferences().stream().anyMatch(ref -> {
+                        return ref.getName() != null
+                                && ref.getName().equals("https://nodesecurity.io/advisories/" + vuln.getName());
+                    });
+                });
         if (!found) {
             dependency.addVulnerability(vuln);
         }
@@ -530,7 +540,7 @@ public abstract class AbstractNpmAnalyzer extends AbstractFileTypeAnalyzer {
         }
         for (String v : availableVersions) {
             try {
-                final Semver version = new Semver(v, SemverType.NPM);
+                final Semver version = new Semver(v);
                 if (version.satisfies(versionRange)) {
                     return v;
                 }

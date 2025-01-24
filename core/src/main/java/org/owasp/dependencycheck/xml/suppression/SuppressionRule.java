@@ -62,7 +62,7 @@ public class SuppressionRule {
     /**
      * The list of cvssBelow scores.
      */
-    private List<Float> cvssBelow = new ArrayList<>();
+    private List<Double> cvssBelow = new ArrayList<>();
     /**
      * The list of CWE entries to suppress.
      */
@@ -74,7 +74,7 @@ public class SuppressionRule {
     /**
      * The list of vulnerability name entries to suppress.
      */
-    private List<PropertyType> vulnerabilityNames = new ArrayList<>();
+    private final List<PropertyType> vulnerabilityNames = new ArrayList<>();
     /**
      * A Maven GAV to suppression.
      */
@@ -102,6 +102,29 @@ public class SuppressionRule {
      * waiting for the vulnerability fix of the dependency to be released.
      */
     private Calendar until;
+
+    /**
+     * A flag whether or not the rule matched a dependency & CPE.
+     */
+    private boolean matched = false;
+
+    /**
+     * Get the value of matched.
+     *
+     * @return the value of matched
+     */
+    public boolean isMatched() {
+        return matched;
+    }
+
+    /**
+     * Set the value of matched.
+     *
+     * @param matched new value of matched
+     */
+    public void setMatched(boolean matched) {
+        this.matched = matched;
+    }
 
     /**
      * Get the (@code{nullable}) value of until.
@@ -207,7 +230,7 @@ public class SuppressionRule {
      *
      * @return the value of cvssBelow
      */
-    public List<Float> getCvssBelow() {
+    public List<Double> getCvssBelow() {
         return cvssBelow;
     }
 
@@ -216,7 +239,7 @@ public class SuppressionRule {
      *
      * @param cvssBelow new value of cvssBelow
      */
-    public void setCvssBelow(List<Float> cvssBelow) {
+    public void setCvssBelow(List<Double> cvssBelow) {
         this.cvssBelow = cvssBelow;
     }
 
@@ -225,14 +248,14 @@ public class SuppressionRule {
      *
      * @param cvss the CVSS to add
      */
-    public void addCvssBelow(Float cvss) {
+    public void addCvssBelow(Double cvss) {
         this.cvssBelow.add(cvss);
     }
 
     /**
-     * Returns whether or not this suppression rule has CVSS suppressions.
+     * Returns whether or not this suppression rule has CVSS suppression criteria.
      *
-     * @return whether or not this suppression rule has CVSS suppressions
+     * @return whether or not this suppression rule has CVSS suppression criteria.
      */
     public boolean hasCvssBelow() {
         return !cvssBelow.isEmpty();
@@ -250,18 +273,9 @@ public class SuppressionRule {
     /**
      * Set the value of notes.
      *
-     * @param notes new value of cve
+     * @param notes new value of notes
      */
     public void setNotes(String notes) {
-        this.notes = notes;
-    }
-
-    /**
-     * Adds the notes to the cve list.
-     *
-     * @param notes the cve to add
-     */
-    public void addNotes(String notes) {
         this.notes = notes;
     }
 
@@ -271,7 +285,7 @@ public class SuppressionRule {
      * @return whether this suppression rule has notes entries
      */
     public boolean hasNotes() {
-        return !cve.isEmpty();
+        return !notes.isEmpty();
     }
 
     /**
@@ -467,6 +481,7 @@ public class SuppressionRule {
                 for (PropertyType c : this.cpe) {
                     if (identifierMatches(c, i)) {
                         if (!isBase()) {
+                            matched = true;
                             if (this.notes != null) {
                                 i.setNotes(this.notes);
                             }
@@ -507,35 +522,37 @@ public class SuppressionRule {
                             removeVulns.add(v);
                             break;
                         }
-
                     }
                 }
                 if (!remove) {
-                    for (float cvss : this.cvssBelow) {
-                        if (v.getCvssV2() != null && v.getCvssV2().getScore() < cvss) {
+                    for (Double cvss : this.cvssBelow) {
+                        //TODO validate this comparison
+                        if (v.getCvssV2() != null && v.getCvssV2().getCvssData().getBaseScore().compareTo(cvss) < 0) {
                             remove = true;
                             removeVulns.add(v);
                             break;
                         }
-                        if (v.getCvssV3() != null && v.getCvssV3().getBaseScore() < cvss) {
+                        if (v.getCvssV3() != null && v.getCvssV3().getCvssData().getBaseScore().compareTo(cvss) < 0) {
+                            remove = true;
+                            removeVulns.add(v);
+                            break;
+                        }
+                        if (v.getCvssV4() != null && v.getCvssV4().getCvssData().getBaseScore().compareTo(cvss) < 0) {
                             remove = true;
                             removeVulns.add(v);
                             break;
                         }
                     }
                 }
-                if (remove) {
-                    if (!isBase()) {
-                        if (this.notes != null) {
-                            v.setNotes(this.notes);
-                        }
-                        dependency.addSuppressedVulnerability(v);
+                if (remove && !isBase()) {
+                    matched = true;
+                    if (this.notes != null) {
+                        v.setNotes(this.notes);
                     }
+                    dependency.addSuppressedVulnerability(v);
                 }
             }
-            removeVulns.forEach((v) -> {
-                dependency.removeVulnerability(v);
-            });
+            removeVulns.forEach(dependency::removeVulnerability);
         }
     }
 
@@ -604,20 +621,20 @@ public class SuppressionRule {
                 try {
                     return suppressionEntry.matches(cpeId.toCpe22Uri());
                 } catch (CpeEncodingException ex) {
-                    LOGGER.debug("Unable to convert CPE to 22 URI?" + cpeId.toString());
+                    LOGGER.debug("Unable to convert CPE to 22 URI?" + cpeId);
                 }
             } else if (suppressionEntry.isCaseSensitive()) {
                 try {
                     return cpeId.toCpe22Uri().startsWith(suppressionEntry.getValue());
                 } catch (CpeEncodingException ex) {
-                    LOGGER.debug("Unable to convert CPE to 22 URI?" + cpeId.toString());
+                    LOGGER.debug("Unable to convert CPE to 22 URI?" + cpeId);
                 }
             } else {
                 final String id;
                 try {
                     id = cpeId.toCpe22Uri().toLowerCase();
                 } catch (CpeEncodingException ex) {
-                    LOGGER.debug("Unable to convert CPE to 22 URI?" + cpeId.toString());
+                    LOGGER.debug("Unable to convert CPE to 22 URI?" + cpeId);
                     return false;
                 }
                 final String check = suppressionEntry.getValue().toLowerCase();
@@ -646,42 +663,35 @@ public class SuppressionRule {
         if (sha1 != null) {
             sb.append("sha1=").append(sha1).append(',');
         }
+        if (packageUrl != null) {
+            sb.append("packageUrl=").append(packageUrl).append(',');
+        }
         if (gav != null) {
             sb.append("gav=").append(gav).append(',');
         }
         if (cpe != null && !cpe.isEmpty()) {
             sb.append("cpe={");
-            cpe.forEach((pt) -> {
-                sb.append(pt).append(',');
-            });
+            cpe.forEach((pt) -> sb.append(pt).append(','));
             sb.append('}');
         }
         if (cwe != null && !cwe.isEmpty()) {
             sb.append("cwe={");
-            cwe.forEach((s) -> {
-                sb.append(s).append(',');
-            });
+            cwe.forEach((s) -> sb.append(s).append(','));
             sb.append('}');
         }
         if (cve != null && !cve.isEmpty()) {
             sb.append("cve={");
-            cve.forEach((s) -> {
-                sb.append(s).append(',');
-            });
+            cve.forEach((s) -> sb.append(s).append(','));
             sb.append('}');
         }
         if (vulnerabilityNames != null && !vulnerabilityNames.isEmpty()) {
             sb.append("vulnerabilityName={");
-            vulnerabilityNames.forEach((pt) -> {
-                sb.append(pt).append(',');
-            });
+            vulnerabilityNames.forEach((pt) -> sb.append(pt).append(','));
             sb.append('}');
         }
         if (cvssBelow != null && !cvssBelow.isEmpty()) {
             sb.append("cvssBelow={");
-            cvssBelow.forEach((s) -> {
-                sb.append(s).append(',');
-            });
+            cvssBelow.forEach((s) -> sb.append(s).append(','));
             sb.append('}');
         }
         sb.append('}');

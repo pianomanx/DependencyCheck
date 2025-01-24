@@ -18,7 +18,7 @@
 package org.owasp.dependencycheck.data.nvd.ecosystem;
 
 import org.apache.commons.lang3.StringUtils;
-import org.owasp.dependencycheck.data.nvd.json.DefCveItem;
+import io.github.jeremylong.openvulnerability.client.nvd.DefCveItem;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -77,9 +77,7 @@ public class DescriptionEcosystemMapper {
         }
 
         ECOSYSTEMS = new String[ecosystemIndexes.size()];
-        ecosystemIndexes.entrySet().forEach((e) -> {
-            ECOSYSTEMS[e.getValue()] = e.getKey();
-        });
+        ecosystemIndexes.forEach((key, value) -> ECOSYSTEMS[value] = key);
     }
 
     // take advantage of chars also being numbers
@@ -181,11 +179,9 @@ public class DescriptionEcosystemMapper {
      */
     public String getEcosystem(DefCveItem cve) {
         final int[] ecosystemMap = new int[ECOSYSTEMS.length];
-        cve.getCve().getDescription().getDescriptionData().stream()
+        cve.getCve().getDescriptions().stream()
                 .filter((langString) -> (langString.getLang().equals("en")))
-                .forEachOrdered((langString) -> {
-                    search(langString.getValue(), ecosystemMap);
-                });
+                .forEachOrdered((langString) -> search(langString.getValue(), ecosystemMap));
         return getResult(ecosystemMap);
     }
 
