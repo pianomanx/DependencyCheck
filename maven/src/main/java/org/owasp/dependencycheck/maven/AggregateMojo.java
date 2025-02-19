@@ -22,8 +22,11 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+
+import org.apache.maven.model.ConfigurationContainer;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
@@ -89,6 +92,24 @@ public class AggregateMojo extends BaseDependencyCheckMojo {
                     }
                 }
             }
+        }
+        return exCol;
+    }
+
+    /**
+     * Scans the plugins of the project.
+     *
+     * @param engine the engine used to perform the scanning
+     * @param exCollection the collection of exceptions that might have occurred
+     * previously
+     * @return a collection of exceptions
+     * @throws MojoExecutionException thrown if a fatal exception occurs
+     */
+    @Override
+    protected ExceptionCollection scanPlugins(final Engine engine, final ExceptionCollection exCollection) throws MojoExecutionException {
+        ExceptionCollection exCol = scanPlugins(getProject(), engine, null);
+        for (MavenProject childProject : getDescendants(this.getProject())) {
+            exCol = scanPlugins(childProject, engine, exCol);
         }
         return exCol;
     }
@@ -192,12 +213,12 @@ public class AggregateMojo extends BaseDependencyCheckMojo {
     protected boolean isConfiguredToSkip(MavenProject mavenProject) {
         final Optional<String> value = mavenProject.getBuildPlugins().stream()
                 .filter(f -> "org.owasp:dependency-check-maven".equals(f.getKey()))
-                .map(c -> c.getConfiguration())
+                .map(ConfigurationContainer::getConfiguration)
                 .filter(c -> c != null && c instanceof Xpp3Dom)
                 .map(c -> (Xpp3Dom) c)
                 .map(c -> c.getChild("skip"))
-                .filter(c -> c != null)
-                .map(c -> c.getValue())
+                .filter(Objects::nonNull)
+                .map(Xpp3Dom::getValue)
                 .findFirst();
 
         final String property = mavenProject.getProperties().getProperty("dependency-check.skip");

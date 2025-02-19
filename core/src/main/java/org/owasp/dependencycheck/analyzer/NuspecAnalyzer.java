@@ -24,7 +24,6 @@ import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.analyzer.exception.AnalysisException;
 import org.owasp.dependencycheck.data.nuget.NugetPackage;
 import org.owasp.dependencycheck.data.nuget.NuspecParseException;
-import org.owasp.dependencycheck.data.nuget.NuspecParser;
 import org.owasp.dependencycheck.data.nuget.XPathNuspecParser;
 import org.owasp.dependencycheck.dependency.Confidence;
 import org.owasp.dependencycheck.dependency.Dependency;
@@ -144,7 +143,7 @@ public class NuspecAnalyzer extends AbstractFileTypeAnalyzer {
     public void analyzeDependency(Dependency dependency, Engine engine) throws AnalysisException {
         LOGGER.debug("Checking Nuspec file {}", dependency);
         try {
-            final NuspecParser parser = new XPathNuspecParser();
+            final XPathNuspecParser parser = new XPathNuspecParser();
             final NugetPackage np;
             try (FileInputStream fis = new FileInputStream(dependency.getActualFilePath())) {
                 np = parser.parse(fis);
@@ -159,8 +158,9 @@ public class NuspecAnalyzer extends AbstractFileTypeAnalyzer {
             dependency.addEvidence(EvidenceType.VENDOR, "nuspec", "authors", np.getAuthors(), Confidence.HIGH);
             dependency.addEvidence(EvidenceType.VERSION, "nuspec", "version", np.getVersion(), Confidence.HIGHEST);
             dependency.addEvidence(EvidenceType.PRODUCT, "nuspec", "id", np.getId(), Confidence.HIGHEST);
-            dependency.addEvidence(EvidenceType.VENDOR, "nuspec", "description", np.getDescription(), Confidence.LOW);;
-            dependency.addEvidence(EvidenceType.PRODUCT, "nuspec", "description", np.getDescription(), Confidence.LOW);;
+            dependency.addEvidence(EvidenceType.VENDOR, "nuspec", "id", np.getId(), Confidence.HIGH);
+            dependency.addEvidence(EvidenceType.VENDOR, "nuspec", "description", np.getDescription(), Confidence.LOW);
+            dependency.addEvidence(EvidenceType.PRODUCT, "nuspec", "description", np.getDescription(), Confidence.LOW);
             dependency.setName(np.getId());
             dependency.setVersion(np.getVersion());
             try {
@@ -179,6 +179,7 @@ public class NuspecAnalyzer extends AbstractFileTypeAnalyzer {
             }
             if (np.getTitle() != null) {
                 dependency.addEvidence(EvidenceType.PRODUCT, "nuspec", "title", np.getTitle(), Confidence.MEDIUM);
+                dependency.addEvidence(EvidenceType.VENDOR, "nuspec", "title", np.getTitle(), Confidence.LOW);
             }
         } catch (Throwable e) {
             throw new AnalysisException(e);

@@ -109,11 +109,12 @@ It is also possible to set an expiration date for a suppression rule:
 </suppressions>
 ```
 
-The full schema for suppression files can be found here: [suppression.xsd](https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd "Suppression Schema")
+The full schema for suppression files can be found here: [suppression.xsd](https://dependency-check.github.io/DependencyCheck/dependency-suppression.1.3.xsd "Suppression Schema")
 
 Please see the appropriate configuration option in each interfaces configuration guide:
 
 -  [Command Line Tool](../dependency-check-cli/arguments.html)
 -  [Maven Plugin](../dependency-check-maven/configuration.html)
+-  [Gradle Plugin](../dependency-check-gradle/configuration.html)
 -  [Ant Task](../dependency-check-ant/configuration.html)
 -  [Jenkins Plugin](../dependency-check-jenkins/index.html)

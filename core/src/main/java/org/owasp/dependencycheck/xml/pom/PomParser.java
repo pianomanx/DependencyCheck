@@ -19,7 +19,6 @@ package org.owasp.dependencycheck.xml.pom;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -70,7 +69,7 @@ public class PomParser {
                 throw (PomParseException) ex;
             }
             LOGGER.debug("", ex);
-            throw new PomParseException(String.format("Unable to parse pom '%s'", file.toString()), ex);
+            throw new PomParseException(String.format("Unable to parse pom '%s'", file), ex);
         }
     }
 
@@ -92,7 +91,7 @@ public class PomParser {
                 throw (PomParseException) ex;
             }
             LOGGER.debug("", ex);
-            throw new PomParseException(String.format("Unable to parse pom '%s'", file.toString()), ex);
+            throw new PomParseException(String.format("Unable to parse pom '%s'", file), ex);
         }
     }
 
@@ -112,7 +111,8 @@ public class PomParser {
             final XMLReader xmlReader = saxParser.getXMLReader();
             xmlReader.setContentHandler(handler);
 
-            final BOMInputStream bomStream = new BOMInputStream(new XmlInputStream(new PomProjectInputStream(inputStream)));
+            final BOMInputStream bomStream = BOMInputStream.builder()
+                    .setInputStream(new XmlInputStream(new PomProjectInputStream(inputStream))).get();
             final ByteOrderMark bom = bomStream.getBOM();
             final String defaultEncoding = StandardCharsets.UTF_8.name();
             final String charsetName = bom == null ? defaultEncoding : bom.getCharsetName();
@@ -120,10 +120,7 @@ public class PomParser {
             final InputSource in = new InputSource(reader);
             xmlReader.parse(in);
             return handler.getModel();
-        } catch (ParserConfigurationException | SAXException | FileNotFoundException ex) {
-            LOGGER.debug("", ex);
-            throw new PomParseException(ex);
-        } catch (IOException ex) {
+        } catch (ParserConfigurationException | SAXException | IOException ex) {
             LOGGER.debug("", ex);
             throw new PomParseException(ex);
         }
@@ -145,7 +142,7 @@ public class PomParser {
             final XMLReader xmlReader = saxParser.getXMLReader();
             xmlReader.setContentHandler(handler);
 
-            final BOMInputStream bomStream = new BOMInputStream(new XmlInputStream(inputStream));
+            final BOMInputStream bomStream = BOMInputStream.builder().setInputStream(new XmlInputStream(inputStream)).get();
             final ByteOrderMark bom = bomStream.getBOM();
             final String defaultEncoding = StandardCharsets.UTF_8.name();
             final String charsetName = bom == null ? defaultEncoding : bom.getCharsetName();
@@ -153,10 +150,7 @@ public class PomParser {
             final InputSource in = new InputSource(reader);
             xmlReader.parse(in);
             return handler.getModel();
-        } catch (ParserConfigurationException | SAXException | FileNotFoundException ex) {
-            LOGGER.debug("", ex);
-            throw new PomParseException(ex);
-        } catch (IOException ex) {
+        } catch (ParserConfigurationException | SAXException | IOException ex) {
             LOGGER.debug("", ex);
             throw new PomParseException(ex);
         }

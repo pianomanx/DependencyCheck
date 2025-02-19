@@ -18,8 +18,7 @@
 package org.owasp.dependencycheck;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.jcs.JCS;
+import org.apache.commons.jcs3.JCS;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.owasp.dependencycheck.analyzer.AnalysisPhase;
@@ -40,6 +39,7 @@ import org.owasp.dependencycheck.exception.NoDataException;
 import org.owasp.dependencycheck.exception.ReportException;
 import org.owasp.dependencycheck.exception.WriteLockException;
 import org.owasp.dependencycheck.reporting.ReportGenerator;
+import org.owasp.dependencycheck.utils.FileUtils;
 import org.owasp.dependencycheck.utils.Settings;
 import org.owasp.dependencycheck.utils.WriteLock;
 import org.slf4j.Logger;
@@ -55,10 +55,12 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -76,11 +78,14 @@ import static org.owasp.dependencycheck.analyzer.AnalysisPhase.INFORMATION_COLLE
 import static org.owasp.dependencycheck.analyzer.AnalysisPhase.INITIAL;
 import static org.owasp.dependencycheck.analyzer.AnalysisPhase.POST_FINDING_ANALYSIS;
 import static org.owasp.dependencycheck.analyzer.AnalysisPhase.POST_IDENTIFIER_ANALYSIS;
-import static org.owasp.dependencycheck.analyzer.AnalysisPhase.POST_INFORMATION_COLLECTION;
+import static org.owasp.dependencycheck.analyzer.AnalysisPhase.POST_INFORMATION_COLLECTION1;
+import static org.owasp.dependencycheck.analyzer.AnalysisPhase.POST_INFORMATION_COLLECTION2;
+import static org.owasp.dependencycheck.analyzer.AnalysisPhase.POST_INFORMATION_COLLECTION3;
 import static org.owasp.dependencycheck.analyzer.AnalysisPhase.PRE_FINDING_ANALYSIS;
 import static org.owasp.dependencycheck.analyzer.AnalysisPhase.PRE_IDENTIFIER_ANALYSIS;
 import static org.owasp.dependencycheck.analyzer.AnalysisPhase.PRE_INFORMATION_COLLECTION;
 import org.owasp.dependencycheck.analyzer.DependencyBundlingAnalyzer;
+import org.owasp.dependencycheck.dependency.naming.Identifier;
 
 /**
  * Scans files, directories, etc. for Dependencies. Analyzers are loaded and
@@ -124,6 +129,10 @@ public class Engine implements FileFilter, AutoCloseable {
      */
     private final Settings settings;
     /**
+     * A storage location to persist objects throughout the execution of ODC.
+     */
+    private final Map<String, Object> objects = new HashMap<>();
+    /**
      * The external view of the dependency list.
      */
     private Dependency[] dependenciesExternalView = null;
@@ -137,7 +146,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * value of this system property at runtime. We store the value to reset the
      * property to its original value.
      */
-    private String accessExternalSchema;
+    private final String accessExternalSchema;
 
     /**
      * Creates a new {@link Mode#STANDALONE} Engine.
@@ -180,6 +189,7 @@ public class Engine implements FileFilter, AutoCloseable {
         this.serviceClassLoader = serviceClassLoader;
         this.mode = mode;
         this.accessExternalSchema = System.getProperty("javax.xml.accessExternalSchema");
+
         initializeEngine();
     }
 
@@ -244,11 +254,26 @@ public class Engine implements FileFilter, AutoCloseable {
     }
 
     /**
-     * Adds a dependency.
+     * Adds a dependency. In some cases, when adding a virtual dependency, the
+     * method will identify if the virtual dependency was previously added and
+     * update the existing dependency rather then adding a duplicate.
      *
      * @param dependency the dependency to add
      */
     public synchronized void addDependency(Dependency dependency) {
+        if (dependency.isVirtual()) {
+            for (Dependency existing : dependencies) {
+                if (existing.isVirtual()
+                        && existing.getSha256sum() != null
+                        && existing.getSha256sum().equals(dependency.getSha256sum())
+                        && existing.getDisplayFileName() != null
+                        && existing.getDisplayFileName().equals(dependency.getDisplayFileName())
+                        && identifiersMatch(existing.getSoftwareIdentifiers(), dependency.getSoftwareIdentifiers())) {
+                    DependencyBundlingAnalyzer.mergeDependencies(existing, dependency, null);
+                    return;
+                }
+            }
+        }
         dependencies.add(dependency);
         dependenciesExternalView = null;
     }
@@ -421,8 +446,8 @@ public class Engine implements FileFilter, AutoCloseable {
     public List<Dependency> scan(Collection<File> files, String projectReference) {
         final List<Dependency> deps = new ArrayList<>();
         files.stream().map((file) -> scan(file, projectReference))
-                .filter((d) -> (d != null))
-                .forEach((d) -> deps.addAll(d));
+                .filter(Objects::nonNull)
+                .forEach(deps::addAll);
         return deps;
     }
 
@@ -617,11 +642,11 @@ public class Engine implements FileFilter, AutoCloseable {
         LOGGER.info("\n\nDependency-Check is an open source tool performing a best effort analysis of 3rd party dependencies; false positives and "
                 + "false negatives may exist in the analysis performed by the tool. Use of the tool and the reporting provided constitutes "
                 + "acceptance for use in an AS IS condition, and there are NO warranties, implied or otherwise, with regard to the analysis "
-                + "or its use. Any use of the tool and the reporting provided is at the user’s risk. In no event shall the copyright holder "
+                + "or its use. Any use of the tool and the reporting provided is at the user's risk. In no event shall the copyright holder "
                 + "or OWASP be held liable for any damages whatsoever arising out of or in connection with the use of this tool, the analysis "
                 + "performed, or the resulting report.\n\n\n"
-                + "   About ODC: https://jeremylong.github.io/DependencyCheck/general/internals.html\n"
-                + "   False Positives: https://jeremylong.github.io/DependencyCheck/general/suppression.html\n"
+                + "   About ODC: https://dependency-check.github.io/DependencyCheck/general/internals.html\n"
+                + "   False Positives: https://dependency-check.github.io/DependencyCheck/general/suppression.html\n"
                 + "\n"
                 + "💖 Sponsor: https://github.com/sponsors/jeremylong\n\n");
         LOGGER.debug("\n----------------------------------------------------\nBEGIN ANALYSIS\n----------------------------------------------------");
@@ -655,8 +680,8 @@ public class Engine implements FileFilter, AutoCloseable {
             }
         }
         mode.getPhases().stream()
-                .map((phase) -> analyzers.get(phase))
-                .forEach((analyzerList) -> analyzerList.forEach((a) -> closeAnalyzer(a)));
+                .map(analyzers::get)
+                .forEach((analyzerList) -> analyzerList.forEach(this::closeAnalyzer));
 
         LOGGER.debug("\n----------------------------------------------------\nEND ANALYSIS\n----------------------------------------------------");
         final long analysisDurationSeconds = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - analysisStart);
@@ -768,7 +793,7 @@ public class Engine implements FileFilter, AutoCloseable {
      */
     protected synchronized List<AnalysisTask> getAnalysisTasks(Analyzer analyzer, List<Throwable> exceptions) {
         final List<AnalysisTask> result = new ArrayList<>();
-        dependencies.stream().map((dependency) -> new AnalysisTask(analyzer, dependency, this, exceptions)).forEach((task) -> result.add(task));
+        dependencies.stream().map((dependency) -> new AnalysisTask(analyzer, dependency, this, exceptions)).forEach(result::add);
         return result;
     }
 
@@ -921,7 +946,7 @@ public class Engine implements FileFilter, AutoCloseable {
         try {
             final File cache = new File(settings.getDataDirectory(), "cache");
             if (cache.exists()) {
-                if (FileUtils.deleteQuietly(cache)) {
+                if (FileUtils.delete(cache)) {
                     LOGGER.info("Cache directory purged");
                 }
             }
@@ -931,7 +956,7 @@ public class Engine implements FileFilter, AutoCloseable {
         try {
             final File cache = new File(settings.getDataDirectory(), "oss_cache");
             if (cache.exists()) {
-                if (FileUtils.deleteQuietly(cache)) {
+                if (FileUtils.delete(cache)) {
                     LOGGER.info("OSS Cache directory purged");
                 }
             }
@@ -970,6 +995,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * opening the database
      * @throws DatabaseException if the database connection could not be created
      */
+    @SuppressWarnings("try")
     public void openDatabase(boolean readOnly, boolean lockRequired) throws DatabaseException {
         if (mode.isDatabaseRequired() && database == null) {
             try (WriteLock dblock = new WriteLock(getSettings(), lockRequired && DatabaseManager.isH2Connection(settings))) {
@@ -987,9 +1013,10 @@ public class Engine implements FileFilter, AutoCloseable {
                         if (!connStr.contains("ACCESS_MODE_DATA")) {
                             settings.setString(Settings.KEYS.DB_CONNECTION_STRING, connStr + "ACCESS_MODE_DATA=r");
                         }
+                        settings.setBoolean(Settings.KEYS.AUTO_UPDATE, false);
                         database = new CveDB(settings);
                     } else {
-                        throw new DatabaseException("Unable to open database - configured database file does not exist: " + db.toString());
+                        throw new DatabaseException("Unable to open database - configured database file does not exist: " + db);
                     }
                 } else {
                     database = new CveDB(settings);
@@ -1020,12 +1047,12 @@ public class Engine implements FileFilter, AutoCloseable {
      */
     @NotNull
     public List<Analyzer> getAnalyzers() {
-        final List<Analyzer> ret = new ArrayList<>();
+        final List<Analyzer> analyzerList = new ArrayList<>();
         //insteae of forEach - we can just do a collect
-        mode.getPhases().stream().map((phase) -> analyzers.get(phase)).forEachOrdered((analyzerList) -> {
-            ret.addAll(analyzerList);
-        });
-        return ret;
+        mode.getPhases().stream()
+                .map(analyzers::get)
+                .forEachOrdered(analyzerList::addAll);
+        return analyzerList;
     }
 
     /**
@@ -1061,6 +1088,46 @@ public class Engine implements FileFilter, AutoCloseable {
      */
     public Settings getSettings() {
         return settings;
+    }
+
+    /**
+     * Retrieve an object from the objects collection.
+     *
+     * @param key the key to retrieve the object
+     * @return the object
+     */
+    public Object getObject(String key) {
+        return objects.get(key);
+    }
+
+    /**
+     * Put an object in the object collection.
+     *
+     * @param key the key to store the object
+     * @param object the object to store
+     */
+    public void putObject(String key, Object object) {
+        objects.put(key, object);
+    }
+
+    /**
+     * Verifies if the object exists in the object store.
+     *
+     * @param key the key to retrieve the object
+     * @return <code>true</code> if the object exists; otherwise
+     * <code>false</code>
+     */
+    public boolean hasObject(String key) {
+        return objects.containsKey(key);
+    }
+
+    /**
+     * Removes an object from the object store.
+     *
+     * @param key the key to the object
+     */
+    public void removeObject(String key) {
+        objects.remove(key);
     }
 
     /**
@@ -1117,7 +1184,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param applicationName the name of the application/project
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format (see {@link ReportGenerator.Format})
      * @throws ReportException thrown if there is an error generating the report
      * @deprecated use
      * {@link #writeReports(java.lang.String, java.io.File, java.lang.String, org.owasp.dependencycheck.exception.ExceptionCollection)}
@@ -1134,7 +1201,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param applicationName the name of the application/project
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format (see {@link ReportGenerator.Format})
      * @param exceptions a collection of exceptions that may have occurred
      * during the analysis
      * @throws ReportException thrown if there is an error generating the report
@@ -1153,7 +1220,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param version the Maven version
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format (see {@link ReportGenerator.Format})
      * @throws ReportException thrown if there is an error generating the report
      * @deprecated use
      * {@link #writeReports(String, String, String, String, File, String, ExceptionCollection)}
@@ -1175,7 +1242,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param version the Maven version
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format  (see {@link ReportGenerator.Format})
      * @param exceptions a collection of exceptions that may have occurred
      * during the analysis
      * @throws ReportException thrown if there is an error generating the report
@@ -1200,6 +1267,22 @@ public class Engine implements FileFilter, AutoCloseable {
     }
     //CSON: LineLength
 
+    private boolean identifiersMatch(Set<Identifier> left, Set<Identifier> right) {
+        if (left != null && right != null && left.size() > 0 && left.size() == right.size()) {
+            int count = 0;
+            for (Identifier l : left) {
+                for (Identifier r : right) {
+                    if (l.getValue().equals(r.getValue())) {
+                        count += 1;
+                        break;
+                    }
+                }
+            }
+            return count == left.size();
+        }
+        return false;
+    }
+
     /**
      * {@link Engine} execution modes.
      */
@@ -1214,7 +1297,9 @@ public class Engine implements FileFilter, AutoCloseable {
                 PRE_INFORMATION_COLLECTION,
                 INFORMATION_COLLECTION,
                 INFORMATION_COLLECTION2,
-                POST_INFORMATION_COLLECTION
+                POST_INFORMATION_COLLECTION1,
+                POST_INFORMATION_COLLECTION2,
+                POST_INFORMATION_COLLECTION3
         ),
         /**
          * In evidence processing mode the {@link Engine} processes the evidence

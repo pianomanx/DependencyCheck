@@ -17,39 +17,21 @@
  */
 package org.owasp.dependencycheck.analyzer;
 
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileFilter;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import javax.annotation.concurrent.ThreadSafe;
-
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.ArchiveInputStream;
 import org.apache.commons.compress.archivers.cpio.CpioArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
-import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipFile;
 import org.apache.commons.compress.compressors.CompressorInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2Utils;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipUtils;
-import org.apache.commons.compress.utils.IOUtils;
+import org.apache.commons.io.IOUtils;
 import org.eclipse.packager.rpm.RpmTag;
 import org.eclipse.packager.rpm.parse.RpmInputStream;
 import org.owasp.dependencycheck.Engine;
-import static org.owasp.dependencycheck.analyzer.AbstractNpmAnalyzer.shouldProcess;
 import org.owasp.dependencycheck.analyzer.exception.AnalysisException;
 import org.owasp.dependencycheck.analyzer.exception.ArchiveExtractionException;
 import org.owasp.dependencycheck.analyzer.exception.UnexpectedAnalysisException;
@@ -58,9 +40,29 @@ import org.owasp.dependencycheck.exception.InitializationException;
 import org.owasp.dependencycheck.utils.FileFilterBuilder;
 import org.owasp.dependencycheck.utils.FileUtils;
 import org.owasp.dependencycheck.utils.Settings;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.concurrent.ThreadSafe;
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileFilter;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import static org.owasp.dependencycheck.analyzer.AbstractNpmAnalyzer.shouldProcess;
 
 /**
  * <p>
@@ -133,7 +135,7 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
     private static final AnalysisPhase ANALYSIS_PHASE = AnalysisPhase.INITIAL;
 
     /**
-     * Make java compiler happy
+     * Make java compiler happy.
      */
     public ArchiveAnalyzer() {
     }
@@ -358,7 +360,7 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
                 dependency.setMd5sum("");
                 dependency.setSha1sum("");
                 dependency.setSha256sum("");
-                org.apache.commons.io.FileUtils.copyFile(dependency.getActualFile(), tmpLoc);
+                Files.copy(dependency.getActualFile().toPath(), tmpLoc.toPath());
                 final List<Dependency> dependencySet = findMoreDependencies(engine, tmpLoc);
                 if (dependencySet != null && !dependencySet.isEmpty()) {
                     dependencySet.forEach((d) -> {
@@ -439,7 +441,8 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
                 throw new AnalysisException(msg);
             }
             BufferedInputStream in = null;
-            ZipArchiveInputStream zin = null;
+            //ZipArchiveInputStream zin = null;
+            ZipInputStream zin = null;
             TarArchiveInputStream tin = null;
             GzipCompressorInputStream gin = null;
             BZip2CompressorInputStream bzin = null;
@@ -449,14 +452,15 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
                 if (KNOWN_ZIP_EXT.contains(archiveExt) || ADDITIONAL_ZIP_EXT.contains(archiveExt)) {
                     in = new BufferedInputStream(fis);
                     ensureReadableJar(archiveExt, in);
-                    zin = new ZipArchiveInputStream(in);
+                    //zin = new ZipArchiveInputStream(in);
+                    zin = new ZipInputStream(in);
                     extractArchive(zin, destination, engine);
                 } else if ("tar".equals(archiveExt)) {
                     in = new BufferedInputStream(fis);
                     tin = new TarArchiveInputStream(in);
                     extractArchive(tin, destination, engine);
                 } else if ("gz".equals(archiveExt) || "tgz".equals(archiveExt)) {
-                    final String uncompressedName = GzipUtils.getUncompressedFilename(archive.getName());
+                    final String uncompressedName = GzipUtils.getUncompressedFileName(archive.getName());
                     final File f = new File(destination, uncompressedName);
                     if (engine.accept(f)) {
                         final String destPath = destination.getCanonicalPath();
@@ -471,7 +475,7 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
                         decompressFile(gin, f);
                     }
                 } else if ("bz2".equals(archiveExt) || "tbz2".equals(archiveExt)) {
-                    final String uncompressedName = BZip2Utils.getUncompressedFilename(archive.getName());
+                    final String uncompressedName = BZip2Utils.getUncompressedFileName(archive.getName());
                     final File f = new File(destination, uncompressedName);
                     if (engine.accept(f)) {
                         final String destPath = destination.getCanonicalPath();
@@ -494,11 +498,13 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
                     extractArchive(cain, destination, engine);
                 }
             } catch (ArchiveExtractionException ex) {
-                LOGGER.warn("Exception extracting archive '{}'.", archive.getName());
+                LOGGER.error("Exception extracting archive '{}'.", archive.getName());
                 LOGGER.debug("", ex);
+                throw new AnalysisException(ex.getMessage(), ex);
             } catch (IOException ex) {
-                LOGGER.warn("Exception reading archive '{}'.", archive.getName());
+                LOGGER.error("Exception reading archive '{}'.", archive.getName());
                 LOGGER.debug("", ex);
+                throw new AnalysisException(ex.getMessage(), ex);
             } finally {
                 //overly verbose and not needed... but keeping it anyway due to
                 //having issue with file handles being left open
@@ -518,12 +524,11 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
      * executable JAR is identified the input stream will be advanced to the
      * start of the actual JAR file ( skipping the script).
      *
-     * @see
-     * <a href="http://docs.spring.io/spring-boot/docs/1.3.0.BUILD-SNAPSHOT/reference/htmlsingle/#deployment-install">Installing
-     * Spring Boot Applications</a>
      * @param archiveExt the file extension
      * @param in the input stream
      * @throws IOException thrown if there is an error reading the stream
+     * @see <a href="http://docs.spring.io/spring-boot/docs/1.3.0.BUILD-SNAPSHOT/reference/htmlsingle/#deployment-install">Installing
+     * Spring Boot Applications</a>
      */
     private void ensureReadableJar(final String archiveExt, BufferedInputStream in) throws IOException {
         if (("war".equals(archiveExt) || "jar".equals(archiveExt)) && in.markSupported()) {
@@ -568,17 +573,8 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
         }
     }
 
-    /**
-     * Extracts files from an archive.
-     *
-     * @param input the archive to extract files from
-     * @param destination the location to write the files too
-     * @param engine the dependency-check engine
-     * @throws ArchiveExtractionException thrown if there is an exception
-     * extracting files from the archive
-     */
-    private void extractArchive(ArchiveInputStream input, File destination, Engine engine) throws ArchiveExtractionException {
-        ArchiveEntry entry;
+    private void extractArchive(ZipInputStream input, File destination, Engine engine) throws ArchiveExtractionException {
+        ZipEntry entry;
         try {
             //final String destPath = destination.getCanonicalPath();
             final Path d = destination.toPath();
@@ -586,7 +582,7 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
                 //final File file = new File(destination, entry.getName());
                 final Path f = d.resolve(entry.getName()).normalize();
                 if (!f.startsWith(d)) {
-                    LOGGER.debug("ZipSlip detected\n-Destination: " + d.toString() + "\n-Path: " + f.toString());
+                    LOGGER.debug("ZipSlip detected\n-Destination: " + d + "\n-Path: " + f);
                     final String msg = String.format(
                             "Archive contains a file (%s) that would be extracted outside of the target directory.",
                             entry.getName());
@@ -606,6 +602,74 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
             throw new ArchiveExtractionException(ex);
         } finally {
             FileUtils.close(input);
+        }
+    }
+
+    /**
+     * Extracts files from an archive.
+     *
+     * @param input the archive to extract files from
+     * @param destination the location to write the files too
+     * @param engine the dependency-check engine
+     * @throws ArchiveExtractionException thrown if there is an exception
+     * extracting files from the archive
+     */
+    private void extractArchive(ArchiveInputStream input, File destination, Engine engine) throws ArchiveExtractionException {
+        ArchiveEntry entry;
+        try {
+            //final String destPath = destination.getCanonicalPath();
+            final Path d = destination.toPath();
+            while ((entry = input.getNextEntry()) != null) {
+                //final File file = new File(destination, entry.getName());
+                final Path f = d.resolve(entry.getName()).normalize();
+                if (!f.startsWith(d)) {
+                    LOGGER.debug("ZipSlip detected\n-Destination: " + d + "\n-Path: " + f);
+                    final String msg = String.format(
+                            "Archive contains a file (%s) that would be extracted outside of the target directory.",
+                            entry.getName());
+                    throw new ArchiveExtractionException(msg);
+                }
+                final File file = f.toFile();
+                if (entry.isDirectory()) {
+                    if (!file.exists() && !file.mkdirs()) {
+                        final String msg = String.format("Unable to create directory '%s'.", file.getAbsolutePath());
+                        throw new AnalysisException(msg);
+                    }
+                } else if (engine.accept(file)) {
+                    extractAcceptedFile(input, file);
+                }
+            }
+        } catch (IOException | AnalysisException ex) {
+            throw new ArchiveExtractionException(ex);
+        } finally {
+            FileUtils.close(input);
+        }
+    }
+
+    /**
+     * Extracts a file from an archive.
+     *
+     * @param input the archives input stream
+     * @param file the file to extract
+     * @throws AnalysisException thrown if there is an error
+     */
+    private static void extractAcceptedFile(ZipInputStream input, File file) throws AnalysisException {
+        LOGGER.debug("Extracting '{}'", file.getPath());
+        final File parent = file.getParentFile();
+        if (!parent.isDirectory() && !parent.mkdirs()) {
+            final String msg = String.format("Unable to build directory '%s'.", parent.getAbsolutePath());
+            throw new AnalysisException(msg);
+        }
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            IOUtils.copy(input, fos);
+        } catch (FileNotFoundException ex) {
+            LOGGER.debug("", ex);
+            final String msg = String.format("Unable to find file '%s'.", file.getName());
+            throw new AnalysisException(msg, ex);
+        } catch (IOException ex) {
+            LOGGER.debug("", ex);
+            final String msg = String.format("IO Exception while parsing file '%s'.", file.getName());
+            throw new AnalysisException(msg, ex);
         }
     }
 
@@ -664,7 +728,7 @@ public class ArchiveAnalyzer extends AbstractFileTypeAnalyzer {
         boolean isJar = false;
         ZipFile zip = null;
         try {
-            zip = new ZipFile(dependency.getActualFilePath());
+            zip = ZipFile.builder().setFile(dependency.getActualFilePath()).get();
             if (zip.getEntry("META-INF/MANIFEST.MF") != null
                     || zip.getEntry("META-INF/maven") != null) {
                 final Enumeration<ZipArchiveEntry> entries = zip.getEntries();

@@ -24,9 +24,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import java.util.Arrays;
-import javax.json.JsonReader;
-import javax.json.Json;
-import javax.json.JsonArray;
+import jakarta.json.JsonReader;
+import jakarta.json.Json;
+import jakarta.json.JsonArray;
 import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -41,10 +41,10 @@ import org.junit.BeforeClass;
  */
 public class JsonArrayFixingInputStreamTest {
 
-    String sample1 = "{}";
-    String sample2 = "{}{}";
-    String sample3 = "{'key'='value'}{'key'='value'}\n";
-    String sample4 = "{\n"
+    final String sample1 = "{}";
+    final String sample2 = "{}{}";
+    final String sample3 = "{'key'='value'}{'key'='value'}\n";
+    final String sample4 = "{\n"
             + "	\"Path\": \"my/thing\",\n"
             + "	\"Main\": true,\n"
             + "	\"Dir\": \"/Users/jeremy/Projects/DependencyCheck/core/target/test-classes/golang\",\n"
@@ -279,7 +279,6 @@ public class JsonArrayFixingInputStreamTest {
         try (InputStream sample = new ByteArrayInputStream(sample1.getBytes());
                 JsonArrayFixingInputStream instance = new JsonArrayFixingInputStream(sample)) {
             int i = instance.read();
-            instance.close();
         }
     }
 

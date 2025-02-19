@@ -17,20 +17,19 @@
  */
 package org.owasp.dependencycheck.analyzer;
 
+import io.github.jeremylong.openvulnerability.client.nvd.CvssV2;
+import io.github.jeremylong.openvulnerability.client.nvd.CvssV2Data;
 import org.sonatype.ossindex.service.api.componentreport.ComponentReport;
 import org.sonatype.ossindex.service.api.componentreport.ComponentReportVulnerability;
 import org.sonatype.ossindex.service.api.cvss.Cvss2Severity;
 import org.sonatype.ossindex.service.api.cvss.Cvss2Vector;
-import org.sonatype.ossindex.service.api.cvss.Cvss3Severity;
-import org.sonatype.ossindex.service.api.cvss.Cvss3Vector;
 import org.sonatype.ossindex.service.api.cvss.CvssVector;
 import org.sonatype.ossindex.service.api.cvss.CvssVectorFactory;
 import org.sonatype.ossindex.service.client.OssindexClient;
 import org.owasp.dependencycheck.Engine;
 import org.owasp.dependencycheck.analyzer.exception.AnalysisException;
 import org.owasp.dependencycheck.data.ossindex.OssindexClientFactory;
-import org.owasp.dependencycheck.dependency.CvssV2;
-import org.owasp.dependencycheck.dependency.CvssV3;
+
 import org.owasp.dependencycheck.dependency.Dependency;
 import org.owasp.dependencycheck.dependency.Vulnerability;
 import org.owasp.dependencycheck.dependency.VulnerableSoftware;
@@ -54,8 +53,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import java.net.SocketTimeoutException;
+
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
+import org.owasp.dependencycheck.utils.CvssUtil;
 import org.sonatype.goodies.packageurl.InvalidException;
 import org.sonatype.ossindex.service.client.transport.Transport.TransportException;
 
@@ -133,24 +135,35 @@ public class OssIndexAnalyzer extends AbstractAnalyzer {
                     requestDelay();
                     reports = requestReports(engine.getDependencies());
                 } catch (TransportException ex) {
-                    String message = ex.getMessage();
-                    boolean warnOnly = getSettings().getBoolean(Settings.KEYS.ANALYZER_OSSINDEX_WARN_ONLY_ON_REMOTE_ERRORS, false);
-
+                    final String message = ex.getMessage();
+                    final boolean warnOnly = getSettings().getBoolean(Settings.KEYS.ANALYZER_OSSINDEX_WARN_ONLY_ON_REMOTE_ERRORS, false);
+                    this.setEnabled(false);
                     if (StringUtils.endsWith(message, "401")) {
+                        LOG.error("Invalid credentials for the OSS Index, disabling the analyzer");
                         throw new AnalysisException("Invalid credentials provided for OSS Index", ex);
                     } else if (StringUtils.endsWith(message, "403")) {
+                        LOG.error("OSS Index access forbidden, disabling the analyzer");
                         throw new AnalysisException("OSS Index access forbidden", ex);
                     } else if (StringUtils.endsWith(message, "429")) {
                         if (warnOnly) {
-                            LOG.warn("OSS Index rate limit exceeded", ex);
+                            LOG.warn("OSS Index rate limit exceeded, disabling the analyzer", ex);
                         } else {
-                            throw new AnalysisException("OSS Index rate limit exceeded", ex);
+                            throw new AnalysisException("OSS Index rate limit exceeded, disabling the analyzer", ex);
                         }
                     } else if (warnOnly) {
-                        LOG.warn("Error requesting component reports", ex);
+                        LOG.warn("Error requesting component reports, disabling the analyzer", ex);
                     } else {
-                        LOG.debug("Error requesting component reports", ex);
+                        LOG.debug("Error requesting component reports, disabling the analyzer", ex);
                         throw new AnalysisException("Failed to request component-reports", ex);
+                    }
+                } catch (SocketTimeoutException e) {
+                    final boolean warnOnly = getSettings().getBoolean(Settings.KEYS.ANALYZER_OSSINDEX_WARN_ONLY_ON_REMOTE_ERRORS, false);
+                    this.setEnabled(false);
+                    if (warnOnly) {
+                        LOG.warn("OSS Index socket timeout, disabling the analyzer", e);
+                    } else {
+                        LOG.debug("OSS Index socket timeout", e);
+                        throw new AnalysisException("Failed to establish socket to OSS Index", e);
                     }
                 } catch (Exception e) {
                     LOG.debug("Error requesting component reports", e);
@@ -205,17 +218,15 @@ public class OssIndexAnalyzer extends AbstractAnalyzer {
         LOG.debug("Requesting component-reports for {} dependencies", dependencies.length);
         // create requests for each dependency which has a PURL identifier
         final List<PackageUrl> packages = new ArrayList<>();
-        Arrays.stream(dependencies).forEach(dependency -> {
-            dependency.getSoftwareIdentifiers().stream()
-                    .filter(id -> id instanceof PurlIdentifier)
-                    .map(id -> parsePackageUrl(id.getValue()))
-                    .filter(id -> id != null && StringUtils.isNotBlank(id.getVersion()))
-                    .forEach(id -> packages.add(id));
-        });
+        Arrays.stream(dependencies).forEach(dependency -> dependency.getSoftwareIdentifiers().stream()
+                .filter(id -> id instanceof PurlIdentifier)
+                .map(id -> parsePackageUrl(id.getValue()))
+                .filter(id -> id != null && StringUtils.isNotBlank(id.getVersion()))
+                .forEach(packages::add));
         // only attempt if we have been able to collect some packages
         if (!packages.isEmpty()) {
             try (OssindexClient client = newOssIndexClient()) {
-                LOG.debug("OSS Index Analyzer submitting: " + packages.toString());
+                LOG.debug("OSS Index Analyzer submitting: " + packages);
                 return client.requestComponentReports(packages);
             }
         }
@@ -260,7 +271,7 @@ public class OssIndexAnalyzer extends AbstractAnalyzer {
                                             .orElse(null);
                                     if (existing != null) {
                                         //TODO - can we enhance anything other than the references?
-                                        existing.getReferences().addAll(v.getReferences());
+                                        existing.addReferences(v.getReferences());
                                     } else {
                                         dependency.addVulnerability(v);
                                     }
@@ -307,52 +318,68 @@ public class OssIndexAnalyzer extends AbstractAnalyzer {
         result.setDescription(source.getDescription());
         result.addCwe(source.getCwe());
 
-        final float cvssScore = source.getCvssScore() != null ? source.getCvssScore() : -1;
+        final double cvssScore = source.getCvssScore() != null ? source.getCvssScore().doubleValue() : -1;
 
         if (source.getCvssVector() != null) {
-            // convert cvss details
-            final CvssVector cvssVector = CvssVectorFactory.create(source.getCvssVector());
-
-            final Map<String, String> metrics = cvssVector.getMetrics();
-            if (cvssVector instanceof Cvss2Vector) {
-                result.setCvssV2(new CvssV2(
-                        cvssScore,
-                        metrics.get(Cvss2Vector.ACCESS_VECTOR),
-                        metrics.get(Cvss2Vector.ACCESS_COMPLEXITY),
-                        metrics.get(Cvss2Vector.AUTHENTICATION),
-                        metrics.get(Cvss2Vector.CONFIDENTIALITY_IMPACT),
-                        metrics.get(Cvss2Vector.INTEGRITY_IMPACT),
-                        metrics.get(Cvss2Vector.AVAILABILITY_IMPACT),
-                        Cvss2Severity.of(cvssScore).name()
-                ));
-            } else if (cvssVector instanceof Cvss3Vector) {
-                result.setCvssV3(new CvssV3(
-                        metrics.get(Cvss3Vector.ATTACK_VECTOR),
-                        metrics.get(Cvss3Vector.ATTACK_COMPLEXITY),
-                        metrics.get(Cvss3Vector.PRIVILEGES_REQUIRED),
-                        metrics.get(Cvss3Vector.USER_INTERACTION),
-                        metrics.get(Cvss3Vector.SCOPE),
-                        metrics.get(Cvss3Vector.CONFIDENTIALITY_IMPACT),
-                        metrics.get(Cvss3Vector.INTEGRITY_IMPACT),
-                        metrics.get(Cvss3Vector.AVAILABILITY_IMPACT),
-                        cvssScore,
-                        Cvss3Severity.of(cvssScore).name()
-                ));
+            if (source.getCvssVector().startsWith("CVSS:3")) {
+                result.setCvssV3(CvssUtil.vectorToCvssV3(source.getCvssVector(), cvssScore));
             } else {
-                LOG.warn("Unsupported CVSS vector: {}", cvssVector);
-                result.setUnscoredSeverity(Float.toString(cvssScore));
+                // convert cvss details
+                final CvssVector cvssVector = CvssVectorFactory.create(source.getCvssVector());
+                final Map<String, String> metrics = cvssVector.getMetrics();
+                if (cvssVector instanceof Cvss2Vector) {
+                    String tmp = metrics.get(Cvss2Vector.ACCESS_VECTOR);
+                    CvssV2Data.AccessVectorType accessVector = null;
+                    if (tmp != null) {
+                        accessVector = CvssV2Data.AccessVectorType.fromValue(tmp);
+                    }
+                    tmp = metrics.get(Cvss2Vector.ACCESS_COMPLEXITY);
+                    CvssV2Data.AccessComplexityType accessComplexity = null;
+                    if (tmp != null) {
+                        accessComplexity = CvssV2Data.AccessComplexityType.fromValue(tmp);
+                    }
+                    tmp = metrics.get(Cvss2Vector.AUTHENTICATION);
+                    CvssV2Data.AuthenticationType authentication = null;
+                    if (tmp != null) {
+                        authentication = CvssV2Data.AuthenticationType.fromValue(tmp);
+                    }
+                    tmp = metrics.get(Cvss2Vector.CONFIDENTIALITY_IMPACT);
+                    CvssV2Data.CiaType confidentialityImpact = null;
+                    if (tmp != null) {
+                        confidentialityImpact = CvssV2Data.CiaType.fromValue(tmp);
+                    }
+                    tmp = metrics.get(Cvss2Vector.INTEGRITY_IMPACT);
+                    CvssV2Data.CiaType integrityImpact = null;
+                    if (tmp != null) {
+                        integrityImpact = CvssV2Data.CiaType.fromValue(tmp);
+                    }
+                    tmp = metrics.get(Cvss2Vector.AVAILABILITY_IMPACT);
+                    CvssV2Data.CiaType availabilityImpact = null;
+                    if (tmp != null) {
+                        availabilityImpact = CvssV2Data.CiaType.fromValue(tmp);
+                    }
+                    final String severity = Cvss2Severity.of((float) cvssScore).name().toUpperCase();
+                    final CvssV2Data cvssData = new CvssV2Data("2.0", source.getCvssVector(), accessVector,
+                            accessComplexity, authentication, confidentialityImpact,
+                            integrityImpact, availabilityImpact, cvssScore,
+                            severity, null, null, null, null, null, null, null, null, null, null);
+                    final CvssV2 cvssV2 = new CvssV2(null, null, cvssData, severity, null, null, null, null, null, null, null);
+                    result.setCvssV2(cvssV2);
+                } else {
+                    LOG.warn("Unsupported CVSS vector: {}", cvssVector);
+                    result.setUnscoredSeverity(Double.toString(cvssScore));
+                }
             }
         } else {
             LOG.debug("OSS has no vector for {}", result.getName());
-            result.setUnscoredSeverity(Float.toString(cvssScore));
+            result.setUnscoredSeverity(Double.toString(cvssScore));
         }
         // generate a reference to the vulnerability details on OSS Index
         result.addReference(REFERENCE_TYPE, source.getTitle(), source.getReference().toString());
 
         // generate references to other references reported by OSS Index
-        source.getExternalReferences().forEach(externalReference -> {
-            result.addReference("OSSIndex", externalReference.toString(), externalReference.toString());
-        });
+        source.getExternalReferences().forEach(externalReference
+                -> result.addReference("OSSIndex", externalReference.toString(), externalReference.toString()));
 
         // attach vulnerable software details as best we can
         final PackageUrl purl = report.getCoordinates();

@@ -9,7 +9,7 @@
  ****************************************************************************** */
 /** ****************************************************************************
  * This is a copy of https://github.com/kichik/pecoff4j/blob/2137804a7c1f1aa5f4272a9623bad452f7aab0ad/java/src/org/boris/pecoff4j/io/PEParser.java#L1
- * Added a logger and more forgiving error handling while reading files per https://github.com/jeremylong/DependencyCheck/issues/2601
+ * Added a logger and more forgiving error handling while reading files per https://github.com/dependency-check/DependencyCheck/issues/2601
  ***************************************************************************** */
 package org.owasp.dependencycheck.utils;
 
@@ -441,8 +441,8 @@ public class PEParser {
             byte[] pa = new byte[pointer - dr.getPosition()];
             dr.read(pa);
             boolean zeroes = true;
-            for (int i = 0; i < pa.length; i++) {
-                if (pa[i] != 0) {
+            for (byte b : pa) {
+                if (b != 0) {
                     zeroes = false;
                     break;
                 }
@@ -515,21 +515,16 @@ public class PEParser {
             byte[] b) throws IOException {
         DataReader dr = new DataReader(b);
         BoundImportDirectoryTable bidt = new BoundImportDirectoryTable();
-        List<BoundImport> imports = new ArrayList<BoundImport>();
+        List<BoundImport> imports = new ArrayList<>();
         BoundImport bi = null;
         while ((bi = readBoundImport(dr)) != null) {
             bidt.add(bi);
             imports.add(bi);
         }
-        Collections.sort(imports, new Comparator<BoundImport>() {
-            @Override
-            public int compare(BoundImport o1, BoundImport o2) {
-                return o1.getOffsetToModuleName() - o2.getOffsetToModuleName();
-            }
-        });
+        imports.sort((o1, o2) -> o1.getOffsetToModuleName() - o2.getOffsetToModuleName());
         IntMap names = new IntMap();
-        for (int i = 0; i < imports.size(); i++) {
-            bi = imports.get(i);
+        for (BoundImport anImport : imports) {
+            bi = anImport;
             int offset = bi.getOffsetToModuleName();
             String n = (String) names.get(offset);
             if (n == null) {

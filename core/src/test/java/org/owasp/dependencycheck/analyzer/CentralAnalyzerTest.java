@@ -17,10 +17,6 @@
  */
 package org.owasp.dependencycheck.analyzer;
 
-import mockit.Expectations;
-import mockit.Mock;
-import mockit.MockUp;
-import mockit.Mocked;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.owasp.dependencycheck.analyzer.exception.AnalysisException;
@@ -49,8 +45,8 @@ import org.owasp.dependencycheck.utils.Settings;
 public class CentralAnalyzerTest extends BaseTest {
 
     private static final String SHA1_SUM = "my-sha1-sum";
-    CentralSearch centralSearch = mock(CentralSearch.class);
-    Dependency dependency = mock(Dependency.class);
+    final CentralSearch centralSearch = mock(CentralSearch.class);
+    final Dependency dependency = mock(Dependency.class);
 
     @Test
     @SuppressWarnings("PMD.NonStaticInitializer")
